@@ -1,8 +1,14 @@
 #include <iostream>
+#include <algorithm>
 #include <cstdint>
+#include <cassert>
+#include <random>
+#include <memory>
 
+#include "CRucio.hpp"
 #include "CScheduleable.hpp"
 
+typedef std::minstd_rand RNGEngineType;
 
 struct SLink
 {
@@ -16,11 +22,66 @@ struct SLink
 
 class CDataGenerator : public CScheduleable
 {
+private:
+    CRucio *mRucio;
+    RNGEngineType &mRNGEngine;
+    std::normal_distribution<float> mNumFilesRNG;
+    std::normal_distribution<double> mFileSizeRNG;
+    std::normal_distribution<float> mFileLifetimeRNG;
+    const std::uint32_t mTickFreq;
+
+    std::uint64_t CreateFilesAndReplicas(std::uint32_t numFiles, std::uint32_t numReplicasPerFile, std::uint64_t now)
+    {
+        if(numFiles == 0 || numReplicasPerFile == 0)
+            return 0;
+        std::uint64_t bytesOfFilesGen = 0;
+        for(std::uint32_t i = 0; i < numFiles; ++i)
+        {
+            const std::uint64_t fileSize = static_cast<std::uint64_t>(mFileSizeRNG(mRNGEngine));
+            const std::uint64_t expiresAt = now + static_cast<std::uint64_t>(mFileLifetimeRNG(mRNGEngine));
+            /*const SFile &fileObj = */mRucio->CreateFile(fileSize, expiresAt);
+            bytesOfFilesGen += fileSize;
+            /*
+            for(auto *rse : mRSEs)
+            {
+                mRucio->addReplica(fileObj, rseObj);
+                rseObj->increaseReplica(fileObj, 0, fileSize);
+            }
+            */
+        }
+        return bytesOfFilesGen;
+    }
+
 public:
+    CDataGenerator(CRucio *rucio, RNGEngineType &RNGEngine, const std::uint32_t tickFreq)
+    :   mRucio(rucio),
+        mRNGEngine(RNGEngine),
+        mNumFilesRNG(25, 1),
+        mFileSizeRNG(1<<24, 4),
+        mFileLifetimeRNG(3600*24*5, 1),
+        mTickFreq(tickFreq)
+    {}
+
     virtual void OnUpdate(ScheduleType &schedule, std::uint64_t now)
     {
-        //std::cout<<mNextCallTick<<" DataGen\n";
-        mNextCallTick = now + 50;
+        const std::uint32_t totalFilesToGen = std::max(static_cast<std::uint32_t>(mNumFilesRNG(mRNGEngine)), 1U);
+
+        std::uint32_t numFilesToGen = std::max(static_cast<std::uint32_t>(totalFilesToGen * 0.35f), 1U);
+        std::uint64_t totalBytesGen = CreateFilesAndReplicas(numFilesToGen, 1, now);
+        std::uint32_t numFilesGen = numFilesToGen;
+        std::uint32_t totalReplicasGen = numFilesToGen;
+
+        numFilesToGen = std::max(static_cast<std::uint32_t>(totalFilesToGen * 0.60f), 1U);
+        totalBytesGen += CreateFilesAndReplicas(numFilesToGen, 2, now) * 2;
+        numFilesGen += numFilesToGen;
+        totalReplicasGen += numFilesToGen * 2;
+
+        numFilesToGen = totalFilesToGen - numFilesGen;
+        totalBytesGen += CreateFilesAndReplicas(numFilesToGen, 3, now) * 3;
+        numFilesGen += numFilesToGen;
+        totalReplicasGen += numFilesToGen * 3;
+
+        mNextCallTick = now + mTickFreq;
         schedule.push(this);
     }
 };
@@ -77,7 +138,7 @@ public:
     }
     void CreateTransfer(SLink &link, SFile &file)
     {
-        mActiveTransfers.emplace_back(link, file.mSize);
+        mActiveTransfers.emplace_back(link, file.GetSize());
     }
 
     virtual void OnUpdate(ScheduleType &schedule, std::uint64_t now)
@@ -113,32 +174,28 @@ public:
 
 int main()
 {
+    //std::random_device rngDevice;
+    RNGEngineType RNGEngine(42);
+
     ScheduleType schedule;
 
-    CRucio *rucio = new CRucio;
+    std::unique_ptr<CRucio> rucio(new CRucio);
 
-    CTransferManager *transferMgr = new CTransferManager;
-    CDataGenerator *datagen = new CDataGenerator;
-    CReaper *reaper = new CReaper(rucio);
+    std::unique_ptr<CTransferManager> transferMgr(new CTransferManager);
+    std::unique_ptr<CDataGenerator> dataGen(new CDataGenerator(rucio.get(), RNGEngine, 50));
+    std::unique_ptr<CReaper> reaper(new CReaper(rucio.get()));
 
-    schedule.push(transferMgr);
-    schedule.push(datagen);
-    schedule.push(reaper);
+    schedule.push(transferMgr.get());
+    schedule.push(dataGen.get());
+    schedule.push(reaper.get());
 
-    for(int j=0;j<5;++j)
-    {
-        for(int i=0;i<500000;i+=3)
-        {
-            rucio->CreateFile(i*j, 1024);
-        }
-    }
-
-    const std::uint64_t MAX_TICK = 10000;//3600 * 24 * 60;
+    const std::uint64_t MAX_TICK = 3600 * 24 * 21;
     std::uint64_t curTick = 0;
     while(curTick<MAX_TICK && !schedule.empty())
     {
         CScheduleable *element = schedule.top();
         schedule.pop();
+        assert(curTick <= element->mNextCallTick);
         curTick = element->mNextCallTick;
         element->OnUpdate(schedule, curTick);
     }

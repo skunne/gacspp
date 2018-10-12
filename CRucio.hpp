@@ -1,19 +1,114 @@
 #pragma once
 
+#include <cstdint>
+#include <string>
 #include <vector>
+#include <unordered_set>
 
+class CStorageElement;
+class CLinkSelector;
 
 struct SFile
 {
-    static std::uint64_t IdCounter;
-    
-    std::uint64_t mId;
-    std::uint64_t mExpiresAt;
+public:
+    typedef std::uint64_t IdType;
+
+private:
+    static IdType IdCounter;
+
+    IdType mId;
     std::uint32_t mSize;
 
-    SFile(std::uint64_t expiresAt, std::uint32_t size);
+public:
+    std::uint64_t mExpiresAt;
+
+    SFile(std::uint32_t size, std::uint64_t expiresAt);
+    SFile(SFile&&) = default;
+    SFile& operator=(SFile&&) = default;
+
+    SFile(SFile const&) = delete;
+    SFile& operator=(SFile const&) = delete;
+
+    inline auto GetId() const -> IdType
+    {return mId;}
+    inline auto GetSize() const -> std::uint32_t
+    {return mSize;}
 };
 
+struct SReplica
+{
+private:
+    SFile *mFile;
+    CStorageElement *mStorageElement;
+    std::uint32_t mCurSize = 0;
+
+public:
+    std::size_t mIndexAtStorageElement;
+
+    SReplica(SFile* file, CStorageElement* storageElement, std::size_t indexAtStorageElement);
+    SReplica(SReplica&&) = default;
+    SReplica& operator=(SReplica&&) = default;
+
+    SReplica(SReplica const&) = delete;
+    SReplica& operator=(SReplica const&) = delete;
+
+    auto Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_t;
+    void Remove(std::uint64_t now);
+
+    inline auto GetFile() const -> SFile*
+    {return mFile;}
+    inline auto GetStorageElement() const -> CStorageElement*
+    {return mStorageElement;}
+    inline auto GetCurSize() const -> std::uint32_t
+    {return mCurSize;}
+};
+
+class CSite
+{
+private:
+    std::vector<CStorageElement> mStorageElements;
+    std::string mName;
+
+public:
+    CSite(const std::string& name);
+
+    CSite(CSite&&) = delete;
+    CSite(CSite const&) = delete;
+    CSite& operator=(CSite const&) = delete;
+
+    //auto CreateLinkSelector(CSite& dstSite) -> CLinkSelector&;
+    auto CreateStorageElement(const std::string& name) -> CStorageElement&;
+    inline auto GetName() const -> const std::string&
+    {return mName;}
+};
+
+class CStorageElement
+{
+private:
+    std::unordered_set<SFile::IdType> mFileIds;
+    std::vector<SReplica> mReplicas;
+    std::string mName;
+
+    CSite* mSite;
+    std::uint64_t mUsedStorage = 0;
+
+public:
+
+    CStorageElement(const std::string& name, CSite* site);
+    CStorageElement(CStorageElement&&) = default;
+    CStorageElement& operator=(CStorageElement&&) = default;
+
+    CStorageElement(CStorageElement const&) = delete;
+    CStorageElement& operator=(CStorageElement const&) = delete;
+
+    auto CreateReplica(SFile& file) -> SReplica&;
+    virtual void OnIncreaseReplica(std::uint64_t amount, std::uint64_t now);
+    virtual void OnRemoveReplica(const SReplica& replica, std::uint64_t now);
+    inline auto GetName() const -> const std::string&
+    {return mName;}
+    inline auto GetSite() const -> const CSite*
+    {return mSite;}
+};
 
 class CRucio
 {
@@ -21,6 +116,6 @@ public:
     std::vector<SFile> mFiles;
 
     CRucio();
-    SFile &CreateFile(std::uint64_t expiresAt, std::uint32_t size);
-    std::size_t RunReaper(std::uint64_t now);
+    auto CreateFile(std::uint32_t size, std::uint64_t expiresAt) -> SFile&;
+    auto RunReaper(std::uint64_t now) -> std::size_t;
 };
