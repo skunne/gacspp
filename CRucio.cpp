@@ -30,25 +30,28 @@ void SReplica::Remove(std::uint64_t now)
 
 
 
-CSite::CSite(const std::string& name)
-    : mName(name)
-{
-    mStorageElements.reserve(16);
-}
-
+ISite::ISite(std::string&& name, std::string&& locationName)
+	: mName(std::move(name)),
+	  mLocationName(std::move(locationName))
+{}
 //auto CCSite::CreateLinkSelector(CSite& dstSite) -> CLinkSelector& {}
 
-auto CSite::CreateStorageElement(const std::string& name) -> CStorageElement&
+CGridSite::CGridSite(std::string&& name, std::string&& locationName)
+	: ISite(std::move(name), std::move(locationName))
 {
-    mStorageElements.emplace_back(name, this);
+	mStorageElements.reserve(16);
+}
+auto CGridSite::CreateStorageElement(std::string&& name) -> CStorageElement&
+{
+    mStorageElements.emplace_back(std::move(name), this);
     return mStorageElements.back();
 }
 
 
 
-CStorageElement::CStorageElement(const std::string& name, CSite* site)
-    : mName(name),
-      mSite(site)
+CStorageElement::CStorageElement(std::string&& name, ISite* site)
+	: mName(std::move(name)),
+	  mSite(site)
 {}
 
 auto CStorageElement::CreateReplica(SFile& file) -> SReplica&

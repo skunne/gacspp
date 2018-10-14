@@ -6,7 +6,8 @@
 #include <unordered_set>
 
 class CStorageElement;
-class CLinkSelector;
+class CLinkSelector
+{};
 
 struct SFile
 {
@@ -63,23 +64,44 @@ public:
     {return mCurSize;}
 };
 
-class CSite
+class ISite
 {
 private:
-    std::vector<CStorageElement> mStorageElements;
+	std::vector<CLinkSelector> mLinkSelectors;
     std::string mName;
+	std::string mLocationName;
 
 public:
-    CSite(const std::string& name);
+	ISite(std::string&& name, std::string&& locationName);
+	virtual ~ISite() = default;
 
-    CSite(CSite&&) = delete;
-    CSite(CSite const&) = delete;
-    CSite& operator=(CSite const&) = delete;
+	ISite(ISite&&) = default;
+	ISite& operator=(ISite&&) = default;
 
-    //auto CreateLinkSelector(CSite& dstSite) -> CLinkSelector&;
-    auto CreateStorageElement(const std::string& name) -> CStorageElement&;
+	ISite(ISite const&) = delete;
+	ISite& operator=(ISite const&) = delete;
+
+	virtual auto CreateLinkSelector(ISite& dstSite) -> CLinkSelector& { mLinkSelectors.emplace_back(); return mLinkSelectors.back(); };
+    virtual auto CreateStorageElement(std::string&& name) -> CStorageElement& = 0;
     inline auto GetName() const -> const std::string&
     {return mName;}
+	inline auto GetLocationName() const -> const std::string&
+	{return mLocationName;}
+};
+class CGridSite : public ISite
+{
+private:
+	std::vector<CStorageElement> mStorageElements;
+
+public:
+	CGridSite(std::string&& name, std::string&& locationName);
+	CGridSite(CGridSite&&) = default;
+	CGridSite& operator=(CGridSite&&) = default;
+
+	CGridSite(CGridSite const&) = delete;
+	CGridSite& operator=(CGridSite const&) = delete;
+
+	virtual auto CreateStorageElement(std::string&& name) -> CStorageElement&;
 };
 
 class CStorageElement
@@ -89,12 +111,12 @@ private:
     std::vector<SReplica> mReplicas;
     std::string mName;
 
-    CSite* mSite;
+protected:
+    ISite* mSite;
     std::uint64_t mUsedStorage = 0;
 
 public:
-
-    CStorageElement(const std::string& name, CSite* site);
+	CStorageElement(std::string&& name, ISite* site);
     CStorageElement(CStorageElement&&) = default;
     CStorageElement& operator=(CStorageElement&&) = default;
 
@@ -106,7 +128,7 @@ public:
     virtual void OnRemoveReplica(const SReplica& replica, std::uint64_t now);
     inline auto GetName() const -> const std::string&
     {return mName;}
-    inline auto GetSite() const -> const CSite*
+    inline auto GetSite() const -> const ISite*
     {return mSite;}
 };
 

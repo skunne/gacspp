@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "CRucio.hpp"
+#include "CCloudGCP.hpp"
 #include "CScheduleable.hpp"
 
 typedef std::minstd_rand RNGEngineType;
@@ -37,7 +38,7 @@ private:
         std::uint64_t bytesOfFilesGen = 0;
         for(std::uint32_t i = 0; i < numFiles; ++i)
         {
-            const std::uint64_t fileSize = static_cast<std::uint64_t>(mFileSizeRNG(mRNGEngine));
+            const std::uint32_t fileSize = static_cast<std::uint32_t>(mFileSizeRNG(mRNGEngine));
             const std::uint64_t expiresAt = now + static_cast<std::uint64_t>(mFileLifetimeRNG(mRNGEngine));
             /*const SFile &fileObj = */mRucio->CreateFile(fileSize, expiresAt);
             bytesOfFilesGen += fileSize;
@@ -92,6 +93,7 @@ private:
     CRucio *mRucio;
 
 public:
+	std::uint64_t n = 0;
     CReaper(CRucio *rucio)
     :mRucio(rucio)
     {
@@ -100,9 +102,9 @@ public:
 
     virtual void OnUpdate(ScheduleType &schedule, std::uint64_t now)
     {
-        std::cout<<mRucio->mFiles.size()<<" files stored at "<<now<<std::endl;
-        auto numDeleted = mRucio->RunReaper(now);
-        std::cout<<numDeleted<<" reaper deletions at "<<now<<std::endl;
+        //std::cout<<mRucio->mFiles.size()<<" files stored at "<<now<<std::endl;
+        n += mRucio->RunReaper(now);
+        //std::cout<<numDeleted<<" reaper deletions at "<<now<<std::endl;
         mNextCallTick = now + 600;
         schedule.push(this);
     }
@@ -143,7 +145,7 @@ public:
 
     virtual void OnUpdate(ScheduleType &schedule, std::uint64_t now)
     {
-        std::uint32_t time_passed = now - mLastUpdated;
+		std::uint32_t time_passed = static_cast<std::uint32_t>(now - mLastUpdated);
         mLastUpdated = now;
         for(STransfer &curTransfer : mActiveTransfers)
         {
@@ -199,4 +201,6 @@ int main()
         curTick = element->mNextCallTick;
         element->OnUpdate(schedule, curTick);
     }
+	std::cout << reaper->n << std::endl;
+	std::cin >> reaper->n;
 }
