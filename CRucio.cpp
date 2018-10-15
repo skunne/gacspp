@@ -104,7 +104,11 @@ auto CRucio::CreateFile(std::uint32_t size, std::uint64_t expiresAt) -> SFile&
     mFiles.emplace_back(size, expiresAt);
     return mFiles.back();
 }
-
+auto CRucio::CreateGridSite(std::string&& name, std::string&& locationName) -> CGridSite&
+{
+    mGridSites.emplace_back(std::move(name), std::move(locationName));
+    return mGridSites.back();
+}
 auto CRucio::RunReaper(std::uint64_t now) -> std::size_t
 {
     const std::size_t numFiles = mFiles.size();

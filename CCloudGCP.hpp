@@ -2,18 +2,13 @@
 
 #include "CRucio.hpp"
 
-#include <cassert>
 #include <cstdint>
 #include <string>
 #include <vector>
 
-#define ONE_GiB (1073741824.0) // 2^30
-#define BYTES_TO_GiB(x) ((x)/ONE_GiB)
-#define SECONDS_PER_MONTH (2592000.0)
-#define SECONDS_TO_MONTHS(x) ((x)/SECONDS_PER_MONTH)
 
 namespace gcp
-{	
+{
 	class CRegion;
 	class CBucket : public CStorageElement
 	{
@@ -27,7 +22,7 @@ namespace gcp
 		CBucket(CBucket&&) = default;
 		virtual void OnIncreaseReplica(std::uint64_t amount, std::uint64_t now) override;
 		virtual void OnRemoveReplica(const SReplica& replica, std::uint64_t now) override;
-	
+
 		double CalculateStorageCosts(std::uint64_t now);
 	};
 
@@ -43,8 +38,9 @@ namespace gcp
 
 		CRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId);
 
-		CBucket &CreateStorageElement(std::string&& name);
+		auto CreateStorageElement(std::string&& name) -> CBucket&;
 		double CalculateStorageCosts(std::uint64_t now);
+		double CalculateNetworkCosts(std::uint64_t now);
 
 		inline auto GetMultiLocationIdx() const -> std::uint32_t
 		{return mMultiLocationIdx;}
@@ -57,17 +53,12 @@ namespace gcp
 	private:
 		std::vector<CRegion> mRegions;
 
-		void SetupDefaultRegions();
-		void SetupDefaultLinkSelectors();
-		void SetupDefaultNetworkCosts();
-		void SetupDefaultOperationCosts();
-
-		CRegion& CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId);
+		auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion&;
 	public:
-		
+
 		bool IsSameLocation(const CRegion& r1, const CRegion& r2) const;
 		bool IsSameMultiLocation(const CRegion& r1, const CRegion& r2) const;
-		void ProcessBilling(std::uint64_t now);
+		auto ProcessBilling(std::uint64_t now) -> std::pair<double, double>;
 		void SetupDefaultCloud();
 		/*
 		def __init__(self):
@@ -101,8 +92,6 @@ namespace gcp
 
 		def create_bucket(self, region, bucket_name, storage_type):
 			assert bucket_name not in self.bucket_by_name, bucket_name
-
-			region_obj = self.get_region_obj(region)
 			if storage_type == Bucket.TYPE_MULTI:
 				region_name = region_obj.name
 				if region_name not in ['asia', 'europe', 'us']: # TODO needs better solution!

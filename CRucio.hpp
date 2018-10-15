@@ -5,9 +5,21 @@
 #include <vector>
 #include <unordered_set>
 
+
+#define ONE_GiB (1073741824.0) // 2^30
+#define BYTES_TO_GiB(x) ((x)/ONE_GiB)
+#define SECONDS_PER_MONTH (2592000.0)
+#define SECONDS_TO_MONTHS(x) ((x)/SECONDS_PER_MONTH)
+
+
 class CStorageElement;
 class CLinkSelector
-{};
+{
+public:
+	typedef std::vector<std::pair<std::uint64_t, double>> PriceInfoType;
+    PriceInfoType mNetworkPrice = {{0,0}};
+    std::uint64_t mUsedTraffic = 0;
+};
 
 struct SFile
 {
@@ -39,7 +51,7 @@ public:
 struct SReplica
 {
 private:
-    SFile *mFile;
+    SFile* mFile;
     CStorageElement *mStorageElement;
     std::uint32_t mCurSize = 0;
 
@@ -67,9 +79,11 @@ public:
 class ISite
 {
 private:
-	std::vector<CLinkSelector> mLinkSelectors;
     std::string mName;
 	std::string mLocationName;
+
+protected:
+    	std::vector<CLinkSelector> mLinkSelectors;
 
 public:
 	ISite(std::string&& name, std::string&& locationName);
@@ -88,6 +102,7 @@ public:
 	inline auto GetLocationName() const -> const std::string&
 	{return mLocationName;}
 };
+
 class CGridSite : public ISite
 {
 private:
@@ -101,7 +116,7 @@ public:
 	CGridSite(CGridSite const&) = delete;
 	CGridSite& operator=(CGridSite const&) = delete;
 
-	virtual auto CreateStorageElement(std::string&& name) -> CStorageElement&;
+	auto CreateStorageElement(std::string&& name) -> CStorageElement&;
 };
 
 class CStorageElement
@@ -136,8 +151,10 @@ class CRucio
 {
 public:
     std::vector<SFile> mFiles;
+    std::vector<CGridSite> mGridSites;
 
     CRucio();
     auto CreateFile(std::uint32_t size, std::uint64_t expiresAt) -> SFile&;
+    auto CreateGridSite(std::string&& name, std::string&& locationName) -> CGridSite&;
     auto RunReaper(std::uint64_t now) -> std::size_t;
 };

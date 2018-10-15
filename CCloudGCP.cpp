@@ -1,13 +1,7 @@
-#pragma once
-
 #include "CCloudGCP.hpp"
-#include "CRucio.hpp"
 
 #include <cassert>
-#include <cstdint>
-#include <string>
 #include <unordered_map>
-#include <vector>
 
 #define ONE_GiB (1073741824.0) // 2^30
 #define BYTES_TO_GiB(x) ((x)/ONE_GiB)
@@ -63,43 +57,52 @@ namespace gcp
 	}
 
 
+
+	static double CalculateNetworkCostsRecursive(std::uint64_t traffic, CLinkSelector::PriceInfoType::const_iterator curLevelIt, const CLinkSelector::PriceInfoType::const_iterator &endIt, std::uint64_t prevThreshold = 0)
+	{
+		assert(curLevelIt->first >= prevThreshold);
+		const std::uint64_t threshold = curLevelIt->first - prevThreshold;
+		CLinkSelector::PriceInfoType::const_iterator nextLevelIt = curLevelIt + 1;
+		if (traffic <= threshold || nextLevelIt == endIt)
+			return BYTES_TO_GiB(traffic) * curLevelIt->second;
+		const double lowerLevelCosts = CalculateNetworkCostsRecursive(traffic - threshold, nextLevelIt, endIt, curLevelIt->first);
+		return (BYTES_TO_GiB(threshold) * curLevelIt->second) + lowerLevelCosts;
+	}
 	CRegion::CRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId)
 		: ISite(std::move(name), std::move(locationName)),
-		mStoragePriceCHF(storagePriceCHF),
 		mSKUId(std::move(skuId)),
-		mMultiLocationIdx(multiLocationIdx)
+		mMultiLocationIdx(multiLocationIdx),
+		mStoragePriceCHF(storagePriceCHF)
 	{}
-	CBucket &CRegion::CreateStorageElement(std::string&& name)
+	auto CRegion::CreateStorageElement(std::string&& name) -> CBucket&
 	{
 		mStorageElements.emplace_back(std::move(name), this);
 		return mStorageElements.back();
 	}
 	double CRegion::CalculateStorageCosts(std::uint64_t now)
 	{
-		double regionCosts = 0;
+		double regionStorageCosts = 0;
 		for (auto &bucket : mStorageElements)
-			regionCosts += bucket.CalculateStorageCosts(now);
-		return regionCosts;
+			regionStorageCosts += bucket.CalculateStorageCosts(now);
+		return regionStorageCosts;
 	}
-
-	typedef std::vector<std::pair<std::uint64_t, double>> PriceInfoType;
-	static double CalculateNetworkCosts(std::uint64_t traffic, PriceInfoType::const_iterator curLevelIt, const PriceInfoType::const_iterator &endIt, std::uint64_t prevThreshold = 0)
+	double CRegion::CalculateNetworkCosts(std::uint64_t now)
 	{
-		assert(curLevelIt->first >= prevThreshold);
-		const std::uint64_t threshold = curLevelIt->first - prevThreshold;
-		PriceInfoType::const_iterator nextLevelIt = curLevelIt + 1;
-		if (traffic <= threshold || nextLevelIt == endIt)
-			return BYTES_TO_GiB(traffic) * curLevelIt->second;
-		const double lowerLevelCosts = CalculateNetworkCosts(traffic - threshold, nextLevelIt, endIt, curLevelIt->first);
-		return (BYTES_TO_GiB(threshold) * curLevelIt->second) + lowerLevelCosts;
+		double regionNetworkCosts = 0;
+		for (auto &linkSelector : mLinkSelectors)
+		{
+			regionNetworkCosts += CalculateNetworkCostsRecursive(linkSelector.mUsedTraffic, linkSelector.mNetworkPrice.cbegin(), linkSelector.mNetworkPrice.cend());
+			linkSelector.mUsedTraffic = 0;
+		}
+		return regionNetworkCosts;
 	}
-
-
-	CRegion& CCloud::CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId)
+	auto CCloud::CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion&
 	{
 		mRegions.emplace_back(multiLocationIdx, std::move(name), std::move(locationName), storagePriceCHF, std::move(skuId));
 		return mRegions.back();
 	}
+
+
 
 	bool CCloud::IsSameLocation(const CRegion& r1, const CRegion& r2) const
 	{
@@ -111,34 +114,25 @@ namespace gcp
 			return !IsSameLocation(r1, r2);
 		return false;
 	}
-	void CCloud::ProcessBilling(std::uint64_t now)
+	auto CCloud::ProcessBilling(std::uint64_t now) -> std::pair<double, double>
 	{
 		/*
 		for transfer in self.transfer_list:
 		transfer.update(current_time)
 		*/
 		double totalStorageCosts = 0;
+		double totalNetworkCosts = 0;
 		for (auto &region : mRegions)
 		{
-			const double regionCosts = region.CalculateStorageCosts(now);
+			const double regionStorageCosts = region.CalculateStorageCosts(now);
+			const double regionNetworkCosts = region.CalculateNetworkCosts(now);
 			//storageCosts[bucket.GetName()] = bucketCosts;
-			totalStorageCosts += regionCosts;
+			totalStorageCosts += regionStorageCosts;
+			totalNetworkCosts += regionNetworkCosts;
 		}
-		double totalNetworkCosts = 0;
-		/*
-		for (const auto &linkSelector : mLinkSelectors)
-		{
-			std::uint64_t traffic = 0;
-			for (const auto &link : linkSelector.mLinks)
-			{
-				traffic += link.mUsedTraffic;
-				link.mUsedTraffic = 0;
-			}
-			const double linkSelectorCosts = CalculateNetworkCosts(traffic, linkSelector.PriceInfo.cbegin(), linkSelector.PriceInfo.cend());
-			totalNetworkCosts += linkSelectorCosts;
-		}*/
+		return std::make_pair(totalStorageCosts, totalNetworkCosts);
 	}
-	void CCloud::SetupDefaultRegions()
+	void CCloud::SetupDefaultCloud()
 	{
 		assert(mRegions.empty());
 
@@ -183,29 +177,11 @@ namespace gcp
 		CreateRegion(4, "us-west1", "Oregon", 0.01978300, "E5F0-6A5D-7BAD");
 		CreateRegion(4, "us-east1", "South Carolina", 0.01978300, "E5F0-6A5D-7BAD");
 		CreateRegion(4, "us-east4", "Northern Virginia", 0.02275045, "5F7A-5173-CF5B");
+		for(auto& region : mRegions)
+			region.CreateStorageElement((region.GetName() + "_testbucket"));
 
 		//CreateRegion("us", "northamerica-northeast1", "Montreal", 0.02275045, "E466-8D73-08F4");
-		//create_region("northamerica-northeast1', 'northamerica-northeast1', 'Montreal', 0.02275045, "E466-8D73-08F4")
-
-	}
-
-	void CCloud::SetupDefaultLinkSelectors()
-	{
-		assert(!mRegions.empty());
-		for (const auto& srcRegion : mRegions)
-		{
-			for (const auto& dstRegion : mRegions)
-			{
-				//if (&srcRegion == &dstRegion)
-				//	continue;
-				//srcRegion.CreateLinkSelector(dstRegion);
-			}
-		}
-	}
-
-	void CCloud::SetupDefaultNetworkCosts()
-	{
-		assert(!mRegions.empty());
+		//CreateRegion("northamerica-northeast1', 'northamerica-northeast1', 'Montreal', 0.02275045, "E466-8D73-08F4")
 
 		/*
 		eu - apac EF0A-B3BA-32CA 0.1121580 0.1121580 0.1028115 0.0747720
@@ -221,16 +197,16 @@ namespace gcp
 		na - sa   BB86-91E8-5450 0.1121580 0.1121580 0.1028115 0.0747720
 		*/
 		//setup bucket to bucket transfer cost
-		
-		PriceInfoType priceSameRegion = { {0,0} };
-		PriceInfoType priceSameMulti = { {1,0.0093465} };
-		
+
+		const CLinkSelector::PriceInfoType priceSameRegion = { {0,0} };
+		const CLinkSelector::PriceInfoType priceSameMulti = { {1,0.0093465} };
+
 		//cost_ww = {"asia": {}, "australia-southeast1": {}, "europe": {}, "southamerica-east1": {}, "us": {}}
-		typedef std::unordered_map<std::uint32_t, PriceInfoType> InnerMapType;
+		typedef std::unordered_map<std::uint32_t, CLinkSelector::PriceInfoType> InnerMapType;
 		typedef std::unordered_map<std::uint32_t, InnerMapType> OuterMapType;
 		/*
-		std::unordered_map<std::string, std::unordered_map<std::string, PriceInfoType>> cost_ww  
-		{ 
+		const OuterMapType priceWW
+		{
 			{ "asia", {	{ "australia-southeast1", {{ 1024, 0.1775835 }, { 10240, 0.1682370 }, { 10240, 0.1401975 }}},
 						{ "europe",{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
 						{ "southamerica-east1",{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
@@ -249,8 +225,8 @@ namespace gcp
 			{ "southamerica-east1", { { "us",{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } } } }
 		};
 		*/
-		OuterMapType priceWW
-		{ 
+		const OuterMapType priceWW
+		{
 			{ 0, {	{ 1, {{ 1024, 0.1775835 }, { 10240, 0.1682370 }, { 10240, 0.1401975 }}},
 					{ 2,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
 					{ 3,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
@@ -290,17 +266,20 @@ namespace gcp
 					else
 						innerIt = outerIt->second.find(dstRegionMultiLocationIdx);
 					assert(innerIt != outerIt->second.cend());
-					//linkselector.network_price_chf = innerIt->second;
+
+					linkSelector.mNetworkPrice = innerIt->second;
 				}
 				else if (isSameLocation)
 				{
 					// 2. case: r1 and r2 are the same region
 					//linkselector.network_price_chf = priceSameRegion
+					linkSelector.mNetworkPrice = priceSameRegion;
 				}
 				else
 				{
 					// 3. case: region r1 is inside the multi region r2
 					//linkselector.network_price_chf = priceSameMulti
+					linkSelector.mNetworkPrice = priceSameMulti;
 				}
 			}
 		}
@@ -308,15 +287,5 @@ namespace gcp
 		//download australia 9B2D-2B7D-FA5C 0.1775835 0.1775835 0.1682370 0.1401975
 		//download china     4980-950B-BDA6 0.2149695 0.2149695 0.2056230 0.1869300
 		//download us emea   22EB-AAE8-FBCD 0.0000000 0.1121580 0.1028115 0.0747720
-	}
-
-	void CCloud::SetupDefaultOperationCosts(){}
-
-	void CCloud::SetupDefaultCloud()
-	{
-		SetupDefaultRegions();
-		SetupDefaultLinkSelectors();
-		SetupDefaultNetworkCosts();
-		SetupDefaultOperationCosts();
 	}
 }

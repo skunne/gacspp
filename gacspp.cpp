@@ -26,40 +26,42 @@ class CDataGenerator : public CScheduleable
 private:
     CRucio *mRucio;
     RNGEngineType &mRNGEngine;
-    std::normal_distribution<float> mNumFilesRNG;
-    std::normal_distribution<double> mFileSizeRNG;
-    std::normal_distribution<float> mFileLifetimeRNG;
+    std::normal_distribution<float> mNumFilesRNG {25, 1};
+    std::normal_distribution<double> mFileSizeRNG {1<<24, 4};
+    std::normal_distribution<float> mFileLifetimeRNG {3600*24*5, 1};
     const std::uint32_t mTickFreq;
 
     std::uint64_t CreateFilesAndReplicas(std::uint32_t numFiles, std::uint32_t numReplicasPerFile, std::uint64_t now)
     {
         if(numFiles == 0 || numReplicasPerFile == 0)
             return 0;
+        const std::uint32_t numStorageElements = static_cast<std::uint32_t>(mStorageElements.size());
+        assert(numReplicasPerFile <= numStorageElements);
         std::uint64_t bytesOfFilesGen = 0;
         for(std::uint32_t i = 0; i < numFiles; ++i)
         {
             const std::uint32_t fileSize = static_cast<std::uint32_t>(mFileSizeRNG(mRNGEngine));
             const std::uint64_t expiresAt = now + static_cast<std::uint64_t>(mFileLifetimeRNG(mRNGEngine));
-            /*const SFile &fileObj = */mRucio->CreateFile(fileSize, expiresAt);
+            SFile& fileObj = mRucio->CreateFile(fileSize, expiresAt);
             bytesOfFilesGen += fileSize;
-            /*
-            for(auto *rse : mRSEs)
+            auto reverseRSEIt = mStorageElements.rbegin();
+            std::uint32_t idxOffset = 0;
+            while(idxOffset < numReplicasPerFile && reverseRSEIt != mStorageElements.rend())
             {
-                mRucio->addReplica(fileObj, rseObj);
-                rseObj->increaseReplica(fileObj, 0, fileSize);
+                std::uniform_int_distribution<std::uint32_t> rngSampler(0, numStorageElements - idxOffset);
+                auto selectedElementIt = mStorageElements.begin() + rngSampler(mRNGEngine);
+                (*selectedElementIt)->CreateReplica(fileObj).Increase(fileSize, now);
+                std::iter_swap(selectedElementIt, reverseRSEIt);
             }
-            */
         }
         return bytesOfFilesGen;
     }
 
 public:
+    std::vector<CStorageElement*> mStorageElements;
     CDataGenerator(CRucio *rucio, RNGEngineType &RNGEngine, const std::uint32_t tickFreq)
     :   mRucio(rucio),
         mRNGEngine(RNGEngine),
-        mNumFilesRNG(25, 1),
-        mFileSizeRNG(1<<24, 4),
-        mFileLifetimeRNG(3600*24*5, 1),
         mTickFreq(tickFreq)
     {}
 
@@ -95,7 +97,7 @@ private:
 public:
 	std::uint64_t n = 0;
     CReaper(CRucio *rucio)
-    :mRucio(rucio)
+        : mRucio(rucio)
     {
         mNextCallTick = 600;
     }
@@ -106,6 +108,29 @@ public:
         n += mRucio->RunReaper(now);
         //std::cout<<numDeleted<<" reaper deletions at "<<now<<std::endl;
         mNextCallTick = now + 600;
+        schedule.push(this);
+    }
+};
+
+class CBillingGenerator : public CScheduleable
+{
+private:
+    gcp::CCloud *mCloud;
+
+public:
+    CBillingGenerator(gcp::CCloud* cloud)
+        : mCloud(cloud)
+    {
+        mNextCallTick = SECONDS_PER_MONTH;
+    }
+
+    virtual void OnUpdate(ScheduleType &schedule, std::uint64_t now)
+    {
+        std::cout<<"Billing for Month "<<(now/SECONDS_PER_MONTH)<<":\n";
+        auto res = mCloud->ProcessBilling(now);
+        std::cout<<"\tStorage: "<<res.first<<std::endl;
+        std::cout<<"\tNetwork: "<<res.second<<std::endl;
+        mNextCallTick = now + SECONDS_PER_MONTH;
         schedule.push(this);
     }
 };
@@ -182,16 +207,26 @@ int main()
     ScheduleType schedule;
 
     std::unique_ptr<CRucio> rucio(new CRucio);
+    std::unique_ptr<gcp::CCloud> gcp(new gcp::CCloud);
 
+    std::unique_ptr<CBillingGenerator> billingGen(new CBillingGenerator(gcp.get()));
+    std::unique_ptr<CReaper> reaper(new CReaper(rucio.get()));
     std::unique_ptr<CTransferManager> transferMgr(new CTransferManager);
     std::unique_ptr<CDataGenerator> dataGen(new CDataGenerator(rucio.get(), RNGEngine, 50));
-    std::unique_ptr<CReaper> reaper(new CReaper(rucio.get()));
 
+    gcp->SetupDefaultCloud();
+
+    dataGen->mStorageElements.push_back(&(rucio->CreateGridSite("ASGC", "asia").CreateStorageElement("TAIWAN_DATADISK")));
+    dataGen->mStorageElements.push_back(&(rucio->CreateGridSite("CERN", "europe").CreateStorageElement("CERN_DATADISK")));
+    dataGen->mStorageElements.push_back(&(rucio->CreateGridSite("BNL", "us").CreateStorageElement("BNL_DATADISK")));
+
+
+    schedule.push(billingGen.get());
     schedule.push(transferMgr.get());
     schedule.push(dataGen.get());
     schedule.push(reaper.get());
 
-    const std::uint64_t MAX_TICK = 3600 * 24 * 21;
+    const std::uint64_t MAX_TICK = 3600 * 24 * 31;
     std::uint64_t curTick = 0;
     while(curTick<MAX_TICK && !schedule.empty())
     {
