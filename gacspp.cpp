@@ -45,13 +45,17 @@ private:
             SFile& fileObj = mRucio->CreateFile(fileSize, expiresAt);
             bytesOfFilesGen += fileSize;
             auto reverseRSEIt = mStorageElements.rbegin();
-            std::uint32_t idxOffset = 0;
-            while(idxOffset < numReplicasPerFile && reverseRSEIt != mStorageElements.rend())
+            std::uint32_t idxOffset = 1;
+            while(idxOffset <= numReplicasPerFile && reverseRSEIt != mStorageElements.rend())
             {
                 std::uniform_int_distribution<std::uint32_t> rngSampler(0, numStorageElements - idxOffset);
-                auto selectedElementIt = mStorageElements.begin() + rngSampler(mRNGEngine);
-                (*selectedElementIt)->CreateReplica(fileObj).Increase(fileSize, now);
+				std::uint32_t a = rngSampler(mRNGEngine);
+                auto selectedElementIt = mStorageElements.begin() + a;
+                //(*selectedElementIt)->CreateReplica(fileObj).Increase(fileSize, now);
+				fileObj.CreateReplica(**selectedElementIt);
                 std::iter_swap(selectedElementIt, reverseRSEIt);
+				++idxOffset;
+				++reverseRSEIt;
             }
         }
         return bytesOfFilesGen;

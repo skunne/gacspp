@@ -13,6 +13,8 @@
 
 
 class CStorageElement;
+struct SReplica;
+
 class CLinkSelector
 {
 public:
@@ -29,6 +31,8 @@ public:
 private:
     static IdType IdCounter;
 
+	std::vector<SReplica> mReplicas;
+
     IdType mId;
     std::uint32_t mSize;
 
@@ -42,6 +46,7 @@ public:
     SFile(SFile const&) = delete;
     SFile& operator=(SFile const&) = delete;
 
+	auto CreateReplica(CStorageElement& storageElement) -> SReplica&;
     inline auto GetId() const -> IdType
     {return mId;}
     inline auto GetSize() const -> std::uint32_t
@@ -52,20 +57,20 @@ struct SReplica
 {
 private:
     SFile* mFile;
-    CStorageElement *mStorageElement;
+    CStorageElement* mStorageElement;
     std::uint32_t mCurSize = 0;
 
 public:
-    std::size_t mIndexAtStorageElement;
+    //std::size_t mIndexAtStorageElement;
 
-    SReplica(SFile* file, CStorageElement* storageElement, std::size_t indexAtStorageElement);
+    SReplica(SFile* file, CStorageElement* storageElement/*, std::size_t indexAtStorageElement*/);
     SReplica(SReplica&&) = default;
     SReplica& operator=(SReplica&&) = default;
 
     SReplica(SReplica const&) = delete;
     SReplica& operator=(SReplica const&) = delete;
 
-    auto Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_t;
+    auto Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_t; 
     void Remove(std::uint64_t now);
 
     inline auto GetFile() const -> SFile*
@@ -122,8 +127,6 @@ public:
 class CStorageElement
 {
 private:
-    std::unordered_set<SFile::IdType> mFileIds;
-    std::vector<SReplica> mReplicas;
     std::string mName;
 
 protected:
@@ -131,6 +134,7 @@ protected:
     std::uint64_t mUsedStorage = 0;
 
 public:
+	std::unordered_set<SFile::IdType> mFileIds;
 	CStorageElement(std::string&& name, ISite* site);
     CStorageElement(CStorageElement&&) = default;
     CStorageElement& operator=(CStorageElement&&) = default;
@@ -138,7 +142,6 @@ public:
     CStorageElement(CStorageElement const&) = delete;
     CStorageElement& operator=(CStorageElement const&) = delete;
 
-    auto CreateReplica(SFile& file) -> SReplica&;
     virtual void OnIncreaseReplica(std::uint64_t amount, std::uint64_t now);
     virtual void OnRemoveReplica(const SReplica& replica, std::uint64_t now);
     inline auto GetName() const -> const std::string&
