@@ -11,15 +11,40 @@
 
 typedef std::minstd_rand RNGEngineType;
 
-struct SLink
-{
-    std::uint32_t mBandwidth;
-    std::uint64_t mUsedTraffic = 0;
+/*
+class TransferNumGenerator:
+    def __init__(self):
+        self.DELAY_BASE = 30
+        self.ALPHA = 1/self.DELAY_BASE * np.pi/180 * 0.075
+        self.SCALE_OF_SOFTMAX = 15
+        self.OFFSET_OF_SOFTMAX = 600
+        self.GEN_BUNCH_SIZE = 10000
+        self.idx_offset = 0
+        self.softmax_values = np.empty(self.GEN_BUNCH_SIZE)
+        self.make_values(0)
 
-    SLink(std::uint32_t bandwidth)
-    :mBandwidth(bandwidth)
-    {}
-};
+    def make_values(self, start_val):
+        step_size = float(self.DELAY_BASE)
+        end_val = start_val + self.GEN_BUNCH_SIZE * step_size
+        vals = np.arange(start_val, end_val, step_size)
+        vals *= self.ALPHA
+        np.cos(vals, out=self.softmax_values)
+        self.softmax_values *= self.SCALE_OF_SOFTMAX
+        self.softmax_values += self.OFFSET_OF_SOFTMAX
+        self.softmax_values += npr.normal(0, 1, len(vals)) * self.softmax_values * 0.02
+
+    def get_num_to_create(self, cur_time, num_active):
+        idx = int(cur_time / self.DELAY_BASE)
+        idx -= self.idx_offset
+        if idx >= len(self.softmax_values):
+            self.make_values(cur_time)
+            self.idx_offset += self.GEN_BUNCH_SIZE
+            idx -= self.GEN_BUNCH_SIZE
+        diff_softmax_active = self.softmax_values[idx] - num_active
+        if diff_softmax_active <= 0:
+            return 0
+        return int(diff_softmax_active ** abs(npr.normal(1.05, 0.04)))
+*/
 
 class CDataGenerator : public CScheduleable
 {
@@ -144,60 +169,67 @@ class CTransferManager : public CScheduleable
 private:
     struct STransfer
     {
-        std::uint32_t &mBandwidth;
-        std::uint64_t &mUsedTraffic;
-        const std::uint32_t mFinalSize;
-        std::uint32_t mCurSize = 0;
+        CLinkSelector* mLinkSelector;
+        SReplica* mDstReplica;
 
-        STransfer(SLink &link, std::uint32_t finalSize)
-            :mBandwidth(link.mBandwidth),
-            mUsedTraffic(link.mUsedTraffic),
-            mFinalSize(finalSize)
+        STransfer(CLinkSelector* linkSelector, SReplica* dstReplica)
+            : mLinkSelector(linkSelector),
+              mDstReplica(dstReplica)
         {}
-        //STransfer(const STransfer &other) = delete;
-        STransfer &operator=(const STransfer &other) = delete;
     };
 
     std::uint64_t mLastUpdated = 0;
     std::vector<STransfer> mActiveTransfers;
-    //std::stack<std::size_t, std::vector<std::size_t>> mFinishedIndices;
 
 public:
     CTransferManager()
     {
         mActiveTransfers.reserve(1024);
     }
-    void CreateTransfer(SLink &link, SFile &file)
+    void CreateTransfer(CLinkSelector* linkSelector, SReplica* dstReplica)
     {
-        mActiveTransfers.emplace_back(link, file.GetSize());
+        linkSelector->mNumActiveTransfers += 1;
+        mActiveTransfers.emplace_back(linkSelector, dstReplica);
     }
 
     virtual void OnUpdate(ScheduleType &schedule, std::uint64_t now)
     {
-		std::uint32_t time_passed = static_cast<std::uint32_t>(now - mLastUpdated);
+		const std::uint32_t timeDiff = static_cast<std::uint32_t>(now - mLastUpdated);
         mLastUpdated = now;
-        for(STransfer &curTransfer : mActiveTransfers)
+        for(std::size_t idx=0; idx<mActiveTransfers.size(); ++idx)
         {
-            const auto finalSize = curTransfer.mFinalSize;
-            auto &curSize = curTransfer.mCurSize;
-            std::uint32_t transferred = curTransfer.mBandwidth * time_passed;
-            curSize += transferred;
+            CLinkSelector* const linkSelector = mActiveTransfers[idx].mLinkSelector;
+            std::uint32_t amount = static_cast<std::uint32_t>((linkSelector->mBandwidth / static_cast<double>(linkSelector->mNumActiveTransfers)) * timeDiff);
 
-            if(curSize >= finalSize)
+            SReplica* const dstReplica = mActiveTransfers[idx].mDstReplica;
+            const std::uint32_t maxSize = dstReplica->GetFile()->GetSize();
+            const std::uint32_t oldSize = dstReplica->GetCurSize();
+            if(dstReplica->Increase(amount, now) == maxSize)
             {
-                transferred -= (curSize - finalSize);
-                curSize = finalSize;
-                //transfer.state = STransfer::SUCCESS;
-                //mFinishedIndices.push(i);
+                amount = maxSize - oldSize;
+                if(mActiveTransfers.size() > 1)
+                    mActiveTransfers[idx] = std::move(mActiveTransfers.back());
+                mActiveTransfers.pop_back();
             }
-
-            curTransfer.mUsedTraffic += transferred;
-            //curTransfer.mDestRSE.increase_replica(transferred);
+            linkSelector->mUsedTraffic += amount;
         }
-        //howto: remove finished transfers
-        //1. stack with indices of finished transfer; clean up mActiveTransfers after iteration
-        //2. second vector gets build with only still active transfers in it
-        //std::cout<<mNextCallTick<<" Transferer\n";
+        mNextCallTick = now + 30;
+        schedule.push(this);
+    }
+};
+
+class CTransferGenerator : public CScheduleable
+{
+private:
+    CTransferManager* mTransferMgr;
+
+public:
+    CTransferGenerator(CTransferManager* transferMgr)
+        : mTransferMgr(transferMgr)
+    {}
+
+    virtual void OnUpdate(ScheduleType &schedule, std::uint64_t now)
+    {
         mNextCallTick = now + 30;
         schedule.push(this);
     }

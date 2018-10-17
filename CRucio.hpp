@@ -19,8 +19,14 @@ class CLinkSelector
 {
 public:
 	typedef std::vector<std::pair<std::uint64_t, double>> PriceInfoType;
+
+	CLinkSelector(std::uint32_t bandwidth)
+		: mBandwidth(bandwidth)
+	{}
     PriceInfoType mNetworkPrice = {{0,0}};
     std::uint64_t mUsedTraffic = 0;
+	std::uint32_t mNumActiveTransfers = 0;
+	std::uint32_t mBandwidth;
 };
 
 struct SFile
@@ -70,7 +76,7 @@ public:
     SReplica(SReplica const&) = delete;
     SReplica& operator=(SReplica const&) = delete;
 
-    auto Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_t; 
+    auto Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_t;
     void Remove(std::uint64_t now);
 
     inline auto GetFile() const -> SFile*
@@ -100,7 +106,7 @@ public:
 	ISite(ISite const&) = delete;
 	ISite& operator=(ISite const&) = delete;
 
-	virtual auto CreateLinkSelector(ISite& dstSite) -> CLinkSelector& { mLinkSelectors.emplace_back(); return mLinkSelectors.back(); };
+	virtual auto CreateLinkSelector(ISite& dstSite, std::uint32_t bandwidth) -> CLinkSelector&;
     virtual auto CreateStorageElement(std::string&& name) -> CStorageElement& = 0;
     inline auto GetName() const -> const std::string&
     {return mName;}

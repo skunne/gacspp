@@ -29,7 +29,7 @@ SReplica::SReplica(SFile* file, CStorageElement* storageElement/*, std::size_t i
 {}
 auto SReplica::Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_t
 {
-    mCurSize += amount;
+    mCurSize = std::min(mCurSize + amount, mFile->GetSize());
     mStorageElement->OnIncreaseReplica(amount, now);
     return mCurSize;
 }
@@ -44,7 +44,11 @@ ISite::ISite(std::string&& name, std::string&& locationName)
 	: mName(std::move(name)),
 	  mLocationName(std::move(locationName))
 {}
-//auto CCSite::CreateLinkSelector(CSite& dstSite) -> CLinkSelector& {}
+auto ISite::CreateLinkSelector(ISite& dstSite, std::uint32_t bandwidth) -> CLinkSelector&
+{
+    mLinkSelectors.emplace_back(bandwidth);
+    return mLinkSelectors.back();
+}
 
 CGridSite::CGridSite(std::string&& name, std::string&& locationName)
 	: ISite(std::move(name), std::move(locationName))

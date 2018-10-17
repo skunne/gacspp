@@ -250,7 +250,7 @@ namespace gcp
 			for (auto& dstRegion : mRegions)
 			{
 				const auto dstRegionMultiLocationIdx = dstRegion.GetMultiLocationIdx();
-				CLinkSelector& linkSelector = srcRegion.CreateLinkSelector(dstRegion);
+				CLinkSelector& linkSelector = srcRegion.CreateLinkSelector(dstRegion, 1<<30);
 				const bool isSameLocation = IsSameLocation(srcRegion, dstRegion);
 				const bool isSameMultiLocation = IsSameMultiLocation(srcRegion, dstRegion);
 				if (!isSameLocation && !isSameMultiLocation)
