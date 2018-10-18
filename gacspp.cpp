@@ -5,46 +5,19 @@
 #include <random>
 #include <memory>
 
+#ifdef ENABLE_PLOTS
+#include <mgl2/qt.h>
+#endif
+
 #include "CRucio.hpp"
 #include "CCloudGCP.hpp"
 #include "CScheduleable.hpp"
 
 typedef std::minstd_rand RNGEngineType;
 
-/*
-class TransferNumGenerator:
-    def __init__(self):
-        self.DELAY_BASE = 30
-        self.ALPHA = 1/self.DELAY_BASE * np.pi/180 * 0.075
-        self.SCALE_OF_SOFTMAX = 15
-        self.OFFSET_OF_SOFTMAX = 600
-        self.GEN_BUNCH_SIZE = 10000
-        self.idx_offset = 0
-        self.softmax_values = np.empty(self.GEN_BUNCH_SIZE)
-        self.make_values(0)
 
-    def make_values(self, start_val):
-        step_size = float(self.DELAY_BASE)
-        end_val = start_val + self.GEN_BUNCH_SIZE * step_size
-        vals = np.arange(start_val, end_val, step_size)
-        vals *= self.ALPHA
-        np.cos(vals, out=self.softmax_values)
-        self.softmax_values *= self.SCALE_OF_SOFTMAX
-        self.softmax_values += self.OFFSET_OF_SOFTMAX
-        self.softmax_values += npr.normal(0, 1, len(vals)) * self.softmax_values * 0.02
+#define PI (3.14159265359)
 
-    def get_num_to_create(self, cur_time, num_active):
-        idx = int(cur_time / self.DELAY_BASE)
-        idx -= self.idx_offset
-        if idx >= len(self.softmax_values):
-            self.make_values(cur_time)
-            self.idx_offset += self.GEN_BUNCH_SIZE
-            idx -= self.GEN_BUNCH_SIZE
-        diff_softmax_active = self.softmax_values[idx] - num_active
-        if diff_softmax_active <= 0:
-            return 0
-        return int(diff_softmax_active ** abs(npr.normal(1.05, 0.04)))
-*/
 
 class CDataGenerator : public CScheduleable
 {
@@ -178,6 +151,8 @@ private:
         {}
     };
 
+
+
     std::uint64_t mLastUpdated = 0;
     std::vector<STransfer> mActiveTransfers;
 
@@ -207,8 +182,7 @@ public:
             if(dstReplica->Increase(amount, now) == maxSize)
             {
                 amount = maxSize - oldSize;
-                if(mActiveTransfers.size() > 1)
-                    mActiveTransfers[idx] = std::move(mActiveTransfers.back());
+                mActiveTransfers[idx] = std::move(mActiveTransfers.back());
                 mActiveTransfers.pop_back();
             }
             linkSelector->mUsedTraffic += amount;
@@ -222,21 +196,99 @@ class CTransferGenerator : public CScheduleable
 {
 private:
     CTransferManager* mTransferMgr;
+    RNGEngineType &mRNGEngine;
+    std::normal_distribution<double> mSoftmaxRNG {0, 1};
+    std::normal_distribution<double> mPeakinessRNG {1.05, 0.04};
+    double mSoftmaxScale = 15;
+    double mSoftmaxOffset = 600;
+    double mAlpha = 1.0/30.0 * PI/180.0 * 0.075;
 
 public:
-    CTransferGenerator(CTransferManager* transferMgr)
-        : mTransferMgr(transferMgr)
+    CTransferGenerator(CTransferManager* transferMgr, RNGEngineType& rngEngine)
+        : mTransferMgr(transferMgr),
+          mRNGEngine(rngEngine)
     {}
+
+    inline std::uint32_t GetNumToCreate(std::uint64_t now, std::uint32_t numActive)
+    {
+        const double softmax = (std::cos(now * mAlpha) * mSoftmaxScale + mSoftmaxOffset) * (1.0 + mSoftmaxRNG(mRNGEngine) * 0.02);
+        const double diffSoftmaxActive = softmax - numActive;
+        if(diffSoftmaxActive < 0.5)
+            return 0;
+        return static_cast<std::uint32_t>(std::pow(diffSoftmaxActive, abs(mPeakinessRNG(mRNGEngine))));
+    }
 
     virtual void OnUpdate(ScheduleType &schedule, std::uint64_t now)
     {
+        /*
+        # generate grid -> cloud
+        num_active = len(self.active_transfers)
+        num_to_create = self.g2c_num_generator.get_num_to_create(self.sim.now, num_active)
+        num_to_create_per_rse = max(1, int(num_to_create / len(self.grid_rses)))  # assuming uniform distribution
+        total_transfers_created = 0
+        for grid_rse_obj in self.grid_rses:
+            num_files = min(len(grid_rse_obj.replica_list), num_to_create_per_rse)
+            if (num_files + total_transfers_created) > num_to_create:
+                num_files = num_to_create - total_transfers_created
+            if num_files <= 0:
+                continue
+            total_transfers_created += num_files
+            replicas = random.sample(grid_rse_obj.replica_list, num_files)
+            cloud_rse_obj = npr.choice(self.cloud.bucket_list)
+            for replica in replicas:
+                if cloud_rse_obj.name in replica.file.rse_by_name:
+                    #log.warning('{} to {}'.format(grid_rse_obj.name, cloud_rse_obj.name))
+                    continue
+                self.new_transfers.append(self.rucio.create_transfer(replica.file, grid_rse_obj, cloud_rse_obj))
+        #log.debug('active: {}, to_create: {}, created: 0'.format(num_active, num_to_create), self.sim.now)
+
+        # generate cloud -> cloud
+            # 1. same multi regional location
+            # 2. between multi regional locations
+        # generate cloud -> else
+        */
         mNextCallTick = now + 30;
         schedule.push(this);
     }
 };
+#ifdef ENABLE_PLOTS
+int sample(mglGraph *gr)
+{
+    const int n = 1000;
+    RNGEngineType RNGEngine(42);
+    CTransferGenerator gen(nullptr, RNGEngine);
+    mglData y;
+    y.Create(n);
+    for(int i=0;i<n;++i)
+    {
+        auto a = gen.GetNumToCreate(i*30, 0);
+        y.a[i] = a;
+        //std::cout<<a<<std::endl;
+    }
+    gr->SetFontDef("cursor");
+    gr->SetOrigin(0,0,0);
+    gr->SetRanges(0,n,0,2000);
+    gr->SetTicks('x', 30, 2);
+    gr->SetTicks('y', 200, 0);
+    //gr->Label('x', "Simulation Time", 1);
+    //gr->Label('y', "NumTransfersToCreate", 1);
+
+    //gr->SubPlot(2,2,0,"");
+    //gr->Title("Plot plot (default)");
+
+    gr->Axis();
+	gr->Box();
+    gr->Plot(y);
+    return 0;
+}
+#endif
 
 int main()
 {
+#ifdef ENABLE_PLOTS
+    mglQT gr(sample,"MathGL examples");
+    return gr.Run();
+#endif
     //std::random_device rngDevice;
     RNGEngineType RNGEngine(42);
 
