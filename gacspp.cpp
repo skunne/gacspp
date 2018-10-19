@@ -5,6 +5,7 @@
 #include <random>
 #include <memory>
 
+//#define ENABLE_PLOTS
 #ifdef ENABLE_PLOTS
 #include <mgl2/qt.h>
 #endif
@@ -47,8 +48,7 @@ private:
             while(idxOffset <= numReplicasPerFile && reverseRSEIt != mStorageElements.rend())
             {
                 std::uniform_int_distribution<std::uint32_t> rngSampler(0, numStorageElements - idxOffset);
-				std::uint32_t a = rngSampler(mRNGEngine);
-                auto selectedElementIt = mStorageElements.begin() + a;
+                auto selectedElementIt = mStorageElements.begin() + rngSampler(mRNGEngine);
                 //(*selectedElementIt)->CreateReplica(fileObj).Increase(fileSize, now);
 				fileObj.CreateReplica(**selectedElementIt);
                 std::iter_swap(selectedElementIt, reverseRSEIt);
@@ -184,12 +184,15 @@ public:
                 amount = maxSize - oldSize;
                 mActiveTransfers[idx] = std::move(mActiveTransfers.back());
                 mActiveTransfers.pop_back();
+                linkSelector->mNumActiveTransfers -= 1;
             }
             linkSelector->mUsedTraffic += amount;
         }
         mNextCallTick = now + 30;
         schedule.push(this);
     }
+    inline auto GetNumActiveTransfers() const -> std::size_t
+    {return mActiveTransfers.size();}
 };
 
 class CTransferGenerator : public CScheduleable
@@ -201,7 +204,7 @@ private:
     std::normal_distribution<double> mPeakinessRNG {1.05, 0.04};
     double mSoftmaxScale = 15;
     double mSoftmaxOffset = 600;
-    double mAlpha = 1.0/30.0 * PI/180.0 * 0.075;
+    const double mAlpha = 1.0/30.0 * PI/180.0 * 0.075;
 
 public:
     CTransferGenerator(CTransferManager* transferMgr, RNGEngineType& rngEngine)
@@ -220,12 +223,17 @@ public:
 
     virtual void OnUpdate(ScheduleType &schedule, std::uint64_t now)
     {
+        const std::uint32_t numActive = static_cast<std::size_t>(mTransferMgr->GetNumActiveTransfers());
+        const std::uint32_t numToCreate = GetNumToCreate(now, numActive);
+        const std::uint32_t numToCreatePerRSE = std::max(1, static_cast<std::uint32_t>(numToCreate/static_cast<double>(mSrcRSEs.size())));
+        std::uint32_t totalTransfersCreated = 0;
+        for(const auto& storageElement : mSrcStorageElements)
+        {
+
+        }
         /*
         # generate grid -> cloud
-        num_active = len(self.active_transfers)
-        num_to_create = self.g2c_num_generator.get_num_to_create(self.sim.now, num_active)
-        num_to_create_per_rse = max(1, int(num_to_create / len(self.grid_rses)))  # assuming uniform distribution
-        total_transfers_created = 0
+
         for grid_rse_obj in self.grid_rses:
             num_files = min(len(grid_rse_obj.replica_list), num_to_create_per_rse)
             if (num_files + total_transfers_created) > num_to_create:
