@@ -49,8 +49,8 @@ private:
             {
                 std::uniform_int_distribution<std::uint32_t> rngSampler(0, numStorageElements - idxOffset);
                 auto selectedElementIt = mStorageElements.begin() + rngSampler(*mRNGEngine);
-                //(*selectedElementIt)->CreateReplica(fileObj).Increase(fileSize, now);
-				fileObj.CreateReplica(**selectedElementIt);
+                (*selectedElementIt)->CreateReplica(fileObj).Increase(fileSize, now);
+				//fileObj.CreateReplica(**selectedElementIt);
                 std::iter_swap(selectedElementIt, reverseRSEIt);
 				++idxOffset;
 				++reverseRSEIt;
@@ -250,7 +250,6 @@ public:
         std::uint32_t totalTransfersCreated = 0;
         for(const auto& storageElement : mSrcStorageElements)
         {
-            
         }
         /*
         # generate grid -> cloud

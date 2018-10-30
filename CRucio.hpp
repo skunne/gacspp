@@ -37,7 +37,7 @@ public:
 private:
     static IdType IdCounter;
 
-	std::vector<SReplica> mReplicas;
+	//std::vector<SReplica> mReplicas;
 
     IdType mId;
     std::uint32_t mSize;
@@ -52,7 +52,7 @@ public:
     SFile(SFile const&) = delete;
     SFile& operator=(SFile const&) = delete;
 
-	auto CreateReplica(CStorageElement& storageElement) -> SReplica&;
+	//auto CreateReplica(CStorageElement& storageElement) -> SReplica&;
     inline auto GetId() const -> IdType
     {return mId;}
     inline auto GetSize() const -> std::uint32_t
@@ -67,9 +67,9 @@ private:
     std::uint32_t mCurSize = 0;
 
 public:
-    //std::size_t mIndexAtStorageElement;
+    std::size_t mIndexAtStorageElement;
 
-    SReplica(SFile* file, CStorageElement* storageElement/*, std::size_t indexAtStorageElement*/);
+    SReplica(SFile* file, CStorageElement* storageElement, std::size_t indexAtStorageElement);
     SReplica(SReplica&&) = default;
     SReplica& operator=(SReplica&&) = default;
 
@@ -134,19 +134,23 @@ class CStorageElement
 {
 private:
     std::string mName;
+	std::unordered_set<SFile::IdType> mFileIds;
 
 protected:
     ISite* mSite;
     std::uint64_t mUsedStorage = 0;
 
 public:
-	std::unordered_set<SFile::IdType> mFileIds;
+	std::vector<SReplica> mReplicas;
+	
 	CStorageElement(std::string&& name, ISite* site);
     CStorageElement(CStorageElement&&) = default;
     CStorageElement& operator=(CStorageElement&&) = default;
 
     CStorageElement(CStorageElement const&) = delete;
     CStorageElement& operator=(CStorageElement const&) = delete;
+
+	auto CreateReplica(SFile& file) -> SReplica&;
 
     virtual void OnIncreaseReplica(std::uint64_t amount, std::uint64_t now);
     virtual void OnRemoveReplica(const SReplica& replica, std::uint64_t now);

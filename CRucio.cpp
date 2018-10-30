@@ -9,8 +9,9 @@ SFile::SFile(std::uint32_t size, std::uint64_t expiresAt)
       mSize(size),
       mExpiresAt(expiresAt)
 {
-	mReplicas.reserve(4);
+	//mReplicas.reserve(4);
 }
+/*
 auto SFile::CreateReplica(CStorageElement& storageElement) -> SReplica&
 {
 	const auto result = storageElement.mFileIds.insert(mId);
@@ -20,12 +21,12 @@ auto SFile::CreateReplica(CStorageElement& storageElement) -> SReplica&
 	mReplicas.emplace_back(this, &storageElement);
 	return mReplicas.back();
 }
+*/
 
-
-SReplica::SReplica(SFile* file, CStorageElement* storageElement/*, std::size_t indexAtStorageElement*/)
+SReplica::SReplica(SFile* file, CStorageElement* storageElement, std::size_t indexAtStorageElement)
     : mFile(file),
-      mStorageElement(storageElement)//,
-     // mIndexAtStorageElement(indexAtStorageElement)
+      mStorageElement(storageElement),
+      mIndexAtStorageElement(indexAtStorageElement)
 {}
 auto SReplica::Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_t
 {
@@ -68,7 +69,17 @@ CStorageElement::CStorageElement(std::string&& name, ISite* site)
 	  mSite(site)
 {
 	mFileIds.reserve(500000);
-	//mReplicas.reserve(1000000);
+	mReplicas.reserve(500000);
+}
+
+auto CStorageElement::CreateReplica(SFile& file) -> SReplica&
+{
+	const auto result = mFileIds.insert(file.GetId());
+	assert(result.second == true);
+
+	const std::size_t idx = mReplicas.size();
+	mReplicas.emplace_back(&file, this, idx);
+	return mReplicas.back();
 }
 
 void CStorageElement::OnIncreaseReplica(std::uint64_t amount, std::uint64_t now)
@@ -79,24 +90,24 @@ void CStorageElement::OnIncreaseReplica(std::uint64_t amount, std::uint64_t now)
 void CStorageElement::OnRemoveReplica(const SReplica& replica, std::uint64_t now)
 {
     const auto FileIdIterator = mFileIds.find(replica.GetFile()->GetId());
-    //const std::size_t idxToDelete = replica.mIndexAtStorageElement;
+    const std::size_t idxToDelete = replica.mIndexAtStorageElement;
     const std::uint32_t curSize = replica.GetCurSize();
 
     assert(FileIdIterator != mFileIds.cend());
-    //assert(idxToDelete < mReplicas.size());
+    assert(idxToDelete < mReplicas.size());
     assert(curSize <= mUsedStorage);
 
-    //SReplica& lastReplica = mReplicas.back();
-    //std::size_t& idxLastReplica = lastReplica.mIndexAtStorageElement;
+    SReplica& lastReplica = mReplicas.back();
+    std::size_t& idxLastReplica = lastReplica.mIndexAtStorageElement;
 
     mFileIds.erase(FileIdIterator);
     mUsedStorage -= curSize;
-    /*if(idxToDelete != idxLastReplica)
+    if(idxToDelete != idxLastReplica)
     {
         idxLastReplica = idxToDelete;
         mReplicas[idxToDelete] = std::move(lastReplica);
     }
-    mReplicas.pop_back();*/
+    mReplicas.pop_back();
 }
 
 
