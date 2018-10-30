@@ -1,5 +1,7 @@
-#include "CRucio.hpp"
+#include <algorithm>
 #include <cassert>
+
+#include "CRucio.hpp"
 
 
 SFile::IdType SFile::IdCounter = 0;

@@ -49,7 +49,7 @@ private:
             {
                 std::uniform_int_distribution<std::size_t> rngSampler(0, numStorageElements - idxOffset);
                 auto selectedElementIt = mStorageElements.begin() + rngSampler(*mRNGEngine);
-                (*selectedElementIt)->CreateReplica(&fileObj).Increase(fileSize, now);
+                (*selectedElementIt)->CreateReplica(&file).Increase(fileSize, now);
 				//fileObj.CreateReplica(**selectedElementIt);
                 std::iter_swap(selectedElementIt, reverseRSEIt);
 				++idxOffset;
@@ -242,8 +242,9 @@ public:
     std::vector<CStorageElement*> mSrcStorageElements;
     std::vector<CStorageElement*> mDstStorageElements;
 
-    CTransferGenerator(CTransferManager* transferMgr, CTransferNumberGenerator* transferNumberGen, std::uint32_t delay)
-        : mTransferMgr(transferMgr),
+    CTransferGenerator(RNGEngineType* rngEngine, CTransferManager* transferMgr, CTransferNumberGenerator* transferNumberGen, std::uint32_t delay)
+        : mRNGEngine(rngEngine),
+		  mTransferMgr(transferMgr),
           mTransferNumberGen(transferNumberGen),
           mDelay(delay)
     {}
@@ -257,16 +258,14 @@ public:
         const std::uint32_t numToCreatePerRSE = 1 + static_cast<std::uint32_t>( numToCreate/static_cast<double>(mSrcStorageElements.size()) );
         std::uint32_t totalTransfersCreated = 0;
         std::unordered_map<std::size_t, std::size_t> indexMap;
-        std::vector<std::size_t> indicesToUse;
         std::uniform_int_distribution<std::size_t> dstStorageElementRndChooser(0, mDstStorageElements.size()-1);
-        for(auto storageElement : mSrcStorageElements)
+        for(auto srcStorageElement : mSrcStorageElements)
         {
-            std::size_t numSrcReplicas = storageElement->mReplicas.size();
+			std::uint32_t numCreated = 0;
+            std::size_t numSrcReplicas = srcStorageElement->mReplicas.size();
             indexMap.clear();
             indexMap.reserve(static_cast<std::size_t>(numSrcReplicas/2.0) + 2);
-            indicesToUse.clear();
-            indicesToUse.reserve(numToCreatePerRSE);
-            while(numSrcReplicas > 0 && indicesToUse.size() <= numToCreatePerRSE)
+            while(numSrcReplicas > 0 && numCreated <= numToCreatePerRSE)
             {
                 --numSrcReplicas;
                 std::uniform_int_distribution<std::size_t> rngSampler(0, numSrcReplicas);
@@ -290,9 +289,11 @@ public:
                     // if not endIdx will be == numSrcReplicas and wont occur again anyway
                     idx = endIdx;
                 }
-                SFile* const file = storageElement->mReplicas[idx]->GetFile());
-                CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(*mRNGEngine)];
-                mTransferMgr->CreateTransfer(storageElement, dstStorageElement->CreateReplica(file));
+				SFile* const file = srcStorageElement->mReplicas[idx].GetFile();
+				CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(*mRNGEngine)];
+                mTransferMgr->CreateTransfer(srcStorageElement, &(dstStorageElement->CreateReplica(file)));
+				++numCreated;
+				std::cout << idx << std::endl;
             }
         }
         /*
@@ -376,7 +377,7 @@ int main()
 
     const std::uint32_t generationDelay = 30;
     std::unique_ptr<CTransferNumberGenerator> transferNumberGen(new CTransferNumberGenerator(RNGEngine.get(), 15, 600, generationDelay, 0.075));
-    std::unique_ptr<CTransferGenerator> g2cTransferGen(new CTransferGenerator(transferMgr.get(), transferNumberGen.get(), generationDelay));
+    std::unique_ptr<CTransferGenerator> g2cTransferGen(new CTransferGenerator(RNGEngine.get(), transferMgr.get(), transferNumberGen.get(), generationDelay));
 
 
     gcp->SetupDefaultCloud();

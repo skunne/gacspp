@@ -81,6 +81,8 @@ public:
 
     inline auto GetFile() -> SFile*
     {return mFile;}
+	inline auto GetFile() const -> const SFile*
+	{return mFile;}
     inline auto GetStorageElement() -> CStorageElement*
     {return mStorageElement;}
     inline auto GetCurSize() const -> std::uint32_t
