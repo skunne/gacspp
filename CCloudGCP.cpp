@@ -31,7 +31,7 @@ namespace gcp
 	{
 		const CRegion* const region = dynamic_cast<CRegion*>(mSite);
 		assert(region);
-		const double price = region->mStoragePriceCHF;
+		const double price = region->GetStoragePrice();
 		double costs = 0;
 		std::uint64_t timeOffset = mTimeAtLastReset;
 		std::uint64_t usedStorageAtGivenTime = mStorageAtLastReset;

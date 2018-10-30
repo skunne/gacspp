@@ -94,7 +94,7 @@ private:
 	std::string mLocationName;
 
 protected:
-    	std::vector<CLinkSelector> mLinkSelectors;
+    std::vector<CLinkSelector> mLinkSelectors;
 
 public:
 	ISite(std::string&& name, std::string&& locationName);

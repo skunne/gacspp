@@ -29,12 +29,12 @@ namespace gcp
 	class CRegion : public ISite
 	{
 	private:
-		std::vector<CBucket> mStorageElements;
 		std::string mSKUId;
 		std::uint32_t mMultiLocationIdx;
+		double mStoragePriceCHF;
 
 	public:
-		double mStoragePriceCHF;
+		std::vector<CBucket> mStorageElements;
 
 		CRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId);
 
@@ -44,22 +44,23 @@ namespace gcp
 
 		inline auto GetMultiLocationIdx() const -> std::uint32_t
 		{return mMultiLocationIdx;}
-		inline auto GetStorageElements() const -> const std::vector<CBucket>&
-		{return mStorageElements;}
+		inline auto GetStoragePrice() const -> double
+		{return mStoragePriceCHF;}
 	};
 
 	class CCloud
 	{
-	private:
+	public:
 		std::vector<CRegion> mRegions;
 
 		auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion&;
-	public:
+
 
 		bool IsSameLocation(const CRegion& r1, const CRegion& r2) const;
 		bool IsSameMultiLocation(const CRegion& r1, const CRegion& r2) const;
 		auto ProcessBilling(std::uint64_t now) -> std::pair<double, double>;
 		void SetupDefaultCloud();
+
 		/*
 		def __init__(self):
 			self.region_list = []
