@@ -4,6 +4,7 @@
 #include <cassert>
 #include <random>
 #include <memory>
+#include <unordered_map>
 
 //#define ENABLE_PLOTS
 #ifdef ENABLE_PLOTS
@@ -16,7 +17,6 @@
 #include "CScheduleable.hpp"
 
 typedef std::minstd_rand RNGEngineType;
-
 
 
 
@@ -41,15 +41,15 @@ private:
         {
             const std::uint32_t fileSize = static_cast<std::uint32_t>(mFileSizeRNG(*mRNGEngine));
             const std::uint64_t expiresAt = now + static_cast<std::uint64_t>(mFileLifetimeRNG(*mRNGEngine));
-            SFile& fileObj = mRucio->CreateFile(fileSize, expiresAt);
+            SFile& file = mRucio->CreateFile(fileSize, expiresAt);
             bytesOfFilesGen += fileSize;
             auto reverseRSEIt = mStorageElements.rbegin();
             std::uint32_t idxOffset = 1;
             while(idxOffset <= numReplicasPerFile && reverseRSEIt != mStorageElements.rend())
             {
-                std::uniform_int_distribution<std::uint32_t> rngSampler(0, numStorageElements - idxOffset);
+                std::uniform_int_distribution<std::size_t> rngSampler(0, numStorageElements - idxOffset);
                 auto selectedElementIt = mStorageElements.begin() + rngSampler(*mRNGEngine);
-                (*selectedElementIt)->CreateReplica(fileObj).Increase(fileSize, now);
+                (*selectedElementIt)->CreateReplica(&fileObj).Increase(fileSize, now);
 				//fileObj.CreateReplica(**selectedElementIt);
                 std::iter_swap(selectedElementIt, reverseRSEIt);
 				++idxOffset;
@@ -161,10 +161,17 @@ public:
     {
         mActiveTransfers.reserve(1024);
     }
+
+    //void CreateTransfer(SFile* file, CLinkSelector* linkSelector);
     void CreateTransfer(CLinkSelector* linkSelector, SReplica* dstReplica)
     {
         linkSelector->mNumActiveTransfers += 1;
         mActiveTransfers.emplace_back(linkSelector, dstReplica);
+    }
+    //void CreateTransfer(CStorageElement* srcStorageElement, CStorageElement* dstStorageElement, SFile* file);
+    void CreateTransfer(CStorageElement* srcStorageElement, SReplica* dstReplica)
+    {
+        CStorageElement* dstStorageElement = dstReplica->GetStorageElement();
     }
 
     void OnUpdate(ScheduleType& schedule, std::uint64_t now) final
@@ -226,6 +233,7 @@ public:
 class CTransferGenerator : public CScheduleable
 {
 private:
+    RNGEngineType* mRNGEngine;
     CTransferManager* mTransferMgr;
     CTransferNumberGenerator* mTransferNumberGen;
     std::uint32_t mDelay;
@@ -248,8 +256,44 @@ public:
         const std::uint32_t numToCreate = mTransferNumberGen->GetNumToCreate(now, numActive);
         const std::uint32_t numToCreatePerRSE = 1 + static_cast<std::uint32_t>( numToCreate/static_cast<double>(mSrcStorageElements.size()) );
         std::uint32_t totalTransfersCreated = 0;
-        for(const auto& storageElement : mSrcStorageElements)
+        std::unordered_map<std::size_t, std::size_t> indexMap;
+        std::vector<std::size_t> indicesToUse;
+        std::uniform_int_distribution<std::size_t> dstStorageElementRndChooser(0, mDstStorageElements.size()-1);
+        for(auto storageElement : mSrcStorageElements)
         {
+            std::size_t numSrcReplicas = storageElement->mReplicas.size();
+            indexMap.clear();
+            indexMap.reserve(static_cast<std::size_t>(numSrcReplicas/2.0) + 2);
+            indicesToUse.clear();
+            indicesToUse.reserve(numToCreatePerRSE);
+            while(numSrcReplicas > 0 && indicesToUse.size() <= numToCreatePerRSE)
+            {
+                --numSrcReplicas;
+                std::uniform_int_distribution<std::size_t> rngSampler(0, numSrcReplicas);
+                std::size_t idx = rngSampler(*mRNGEngine);
+
+                auto it = indexMap.find(numSrcReplicas);
+                std::size_t endIdx =  (it != indexMap.end()) ? it->second : numSrcReplicas;
+
+                if(idx != numSrcReplicas)
+                {
+                    auto result = indexMap.insert({idx, endIdx});
+                    if(!result.second) //idx already used
+                    {
+                        idx = result.first->second;
+                        result.first->second = endIdx;
+                    }
+                }
+                else // idx addresses "last" element
+                {
+                    // if numSrcReplicas was used before endIdx will be the resolved idx
+                    // if not endIdx will be == numSrcReplicas and wont occur again anyway
+                    idx = endIdx;
+                }
+                SFile* const file = storageElement->mReplicas[idx]->GetFile());
+                CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(*mRNGEngine)];
+                mTransferMgr->CreateTransfer(storageElement, dstStorageElement->CreateReplica(file));
+            }
         }
         /*
         # generate grid -> cloud

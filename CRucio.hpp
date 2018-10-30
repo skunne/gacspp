@@ -79,9 +79,9 @@ public:
     auto Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_t;
     void Remove(std::uint64_t now);
 
-    inline auto GetFile() const -> SFile*
+    inline auto GetFile() -> SFile*
     {return mFile;}
-    inline auto GetStorageElement() const -> CStorageElement*
+    inline auto GetStorageElement() -> CStorageElement*
     {return mStorageElement;}
     inline auto GetCurSize() const -> std::uint32_t
     {return mCurSize;}
@@ -108,6 +108,9 @@ public:
 
 	virtual auto CreateLinkSelector(ISite& dstSite, std::uint32_t bandwidth) -> CLinkSelector&;
     virtual auto CreateStorageElement(std::string&& name) -> CStorageElement& = 0;
+
+	auto GetLinkSelector(ISite* dstSite) -> CLinkSelector*;
+
     inline auto GetName() const -> const std::string&
     {return mName;}
 	inline auto GetLocationName() const -> const std::string&
@@ -142,7 +145,7 @@ protected:
 
 public:
 	std::vector<SReplica> mReplicas;
-	
+
 	CStorageElement(std::string&& name, ISite* site);
     CStorageElement(CStorageElement&&) = default;
     CStorageElement& operator=(CStorageElement&&) = default;
@@ -150,7 +153,7 @@ public:
     CStorageElement(CStorageElement const&) = delete;
     CStorageElement& operator=(CStorageElement const&) = delete;
 
-	auto CreateReplica(SFile& file) -> SReplica&;
+	auto CreateReplica(SFile* file) -> SReplica&;
 
     virtual void OnIncreaseReplica(std::uint64_t amount, std::uint64_t now);
     virtual void OnRemoveReplica(const SReplica& replica, std::uint64_t now);

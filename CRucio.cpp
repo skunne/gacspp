@@ -72,13 +72,13 @@ CStorageElement::CStorageElement(std::string&& name, ISite* site)
 	mReplicas.reserve(500000);
 }
 
-auto CStorageElement::CreateReplica(SFile& file) -> SReplica&
+auto CStorageElement::CreateReplica(SFile* file) -> SReplica&
 {
-	const auto result = mFileIds.insert(file.GetId());
+	const auto result = mFileIds.insert(file->GetId());
 	assert(result.second == true);
 
 	const std::size_t idx = mReplicas.size();
-	mReplicas.emplace_back(&file, this, idx);
+	mReplicas.emplace_back(file, this, idx);
 	return mReplicas.back();
 }
 
