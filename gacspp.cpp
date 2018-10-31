@@ -1,9 +1,10 @@
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cassert>
-#include <random>
 #include <memory>
+#include <random>
 #include <unordered_map>
 
 //#define ENABLE_PLOTS
@@ -23,36 +24,39 @@ typedef std::minstd_rand RNGEngineType;
 class CDataGenerator : public CScheduleable
 {
 private:
-    CRucio *mRucio;
+    CRucio* mRucio;
     RNGEngineType* mRNGEngine;
-    std::normal_distribution<float> mNumFilesRNG {25, 1};
+    std::normal_distribution<float> mNumFilesRNG {20, 1};
     std::normal_distribution<double> mFileSizeRNG {1<<24, 4};
-    std::normal_distribution<float> mFileLifetimeRNG {3600*24*5, 1};
+    std::normal_distribution<float> mFileLifetimeRNG {3600*24*6, 4};
     const std::uint32_t mTickFreq;
 
-    std::uint64_t CreateFilesAndReplicas(std::uint32_t numFiles, std::uint32_t numReplicasPerFile, std::uint64_t now)
+    std::uint64_t CreateFilesAndReplicas(const std::uint32_t numFiles, const std::uint32_t numReplicasPerFile, const std::uint64_t now)
     {
         if(numFiles == 0 || numReplicasPerFile == 0)
             return 0;
-        const std::uint32_t numStorageElements = static_cast<std::uint32_t>(mStorageElements.size());
+
+        const std::uint32_t numStorageElements = static_cast<std::uint32_t>( mStorageElements.size() );
+
         assert(numReplicasPerFile <= numStorageElements);
+
+        std::uniform_int_distribution<std::uint32_t> rngSampler(0, numStorageElements);
         std::uint64_t bytesOfFilesGen = 0;
         for(std::uint32_t i = 0; i < numFiles; ++i)
         {
-            const std::uint32_t fileSize = static_cast<std::uint32_t>(mFileSizeRNG(*mRNGEngine));
-            const std::uint64_t expiresAt = now + static_cast<std::uint64_t>(mFileLifetimeRNG(*mRNGEngine));
+            const std::uint32_t fileSize = static_cast<std::uint32_t>( std::abs(mFileSizeRNG(*mRNGEngine)) );
+            const std::uint64_t expiresAt = now + static_cast<std::uint64_t>( std::abs(mFileLifetimeRNG(*mRNGEngine)) );
+
             SFile& file = mRucio->CreateFile(fileSize, expiresAt);
             bytesOfFilesGen += fileSize;
+
             auto reverseRSEIt = mStorageElements.rbegin();
-            std::uint32_t idxOffset = 1;
-            while(idxOffset <= numReplicasPerFile && reverseRSEIt != mStorageElements.rend())
+            //numReplicasPerFile <= numStorageElements !
+            for(std::uint32_t numCreated = 0; numCreated<numReplicasPerFile; ++numCreated)
             {
-                std::uniform_int_distribution<std::size_t> rngSampler(0, numStorageElements - idxOffset);
-                auto selectedElementIt = mStorageElements.begin() + rngSampler(*mRNGEngine);
-                (*selectedElementIt)->CreateReplica(&file).Increase(fileSize, now);
-				//fileObj.CreateReplica(**selectedElementIt);
+                auto selectedElementIt = mStorageElements.begin() + (rngSampler(*mRNGEngine) % (numStorageElements - numCreated));
+                (*selectedElementIt)->CreateReplica(&file)->Increase(fileSize, now);
                 std::iter_swap(selectedElementIt, reverseRSEIt);
-				++idxOffset;
 				++reverseRSEIt;
             }
         }
@@ -61,7 +65,7 @@ private:
 
 public:
     std::vector<CStorageElement*> mStorageElements;
-    CDataGenerator(CRucio *rucio, RNGEngineType* RNGEngine, const std::uint32_t tickFreq)
+    CDataGenerator(CRucio* rucio, RNGEngineType* RNGEngine, const std::uint32_t tickFreq)
     :   mRucio(rucio),
         mRNGEngine(RNGEngine),
         mTickFreq(tickFreq)
@@ -70,7 +74,7 @@ public:
     void OnUpdate(ScheduleType& schedule, std::uint64_t now) final
     {
         const std::uint32_t totalFilesToGen = std::max(static_cast<std::uint32_t>(mNumFilesRNG(*mRNGEngine)), 1U);
-
+/*
         std::uint32_t numFilesToGen = std::max(static_cast<std::uint32_t>(totalFilesToGen * 0.35f), 1U);
         std::uint64_t totalBytesGen = CreateFilesAndReplicas(numFilesToGen, 1, now);
         std::uint32_t numFilesGen = numFilesToGen;
@@ -85,6 +89,13 @@ public:
         totalBytesGen += CreateFilesAndReplicas(numFilesToGen, 3, now) * 3;
         numFilesGen += numFilesToGen;
         totalReplicasGen += numFilesToGen * 3;
+*/
+
+        std::uint32_t numFilesToGen = std::max(static_cast<std::uint32_t>(totalFilesToGen * 0.4f), 1U);
+        CreateFilesAndReplicas(numFilesToGen, 1, now);
+
+        numFilesToGen = totalFilesToGen - numFilesToGen;
+        CreateFilesAndReplicas(numFilesToGen, 2, now);
 
         mNextCallTick = now + mTickFreq;
         schedule.push(this);
@@ -117,7 +128,7 @@ public:
 class CBillingGenerator : public CScheduleable
 {
 private:
-    gcp::CCloud *mCloud;
+    gcp::CCloud* mCloud;
 
 public:
     CBillingGenerator(gcp::CCloud* cloud)
@@ -162,16 +173,16 @@ public:
         mActiveTransfers.reserve(1024);
     }
 
-    //void CreateTransfer(SFile* file, CLinkSelector* linkSelector);
     void CreateTransfer(CLinkSelector* linkSelector, SReplica* dstReplica)
     {
         linkSelector->mNumActiveTransfers += 1;
         mActiveTransfers.emplace_back(linkSelector, dstReplica);
     }
-    //void CreateTransfer(CStorageElement* srcStorageElement, CStorageElement* dstStorageElement, SFile* file);
     void CreateTransfer(CStorageElement* srcStorageElement, SReplica* dstReplica)
     {
         CStorageElement* dstStorageElement = dstReplica->GetStorageElement();
+        CLinkSelector* linkSelector = srcStorageElement->GetSite()->GetLinkSelector(dstStorageElement->GetSite());
+        CreateTransfer(linkSelector, dstReplica);
     }
 
     void OnUpdate(ScheduleType& schedule, std::uint64_t now) final
@@ -257,20 +268,20 @@ public:
         const std::uint32_t numToCreate = mTransferNumberGen->GetNumToCreate(now, numActive);
         const std::uint32_t numToCreatePerRSE = 1 + static_cast<std::uint32_t>( numToCreate/static_cast<double>(mSrcStorageElements.size()) );
         std::uint32_t totalTransfersCreated = 0;
-        std::unordered_map<std::size_t, std::size_t> indexMap;
         std::uniform_int_distribution<std::size_t> dstStorageElementRndChooser(0, mDstStorageElements.size()-1);
-        for(auto srcStorageElement : mSrcStorageElements)
+        /*std::unordered_map<std::size_t, std::size_t> indexMap;
+        for(auto& srcStorageElement : mSrcStorageElements)
         {
-			std::uint32_t numCreated = 0;
+            std::uint32_t numCreated = 0;
             std::size_t numSrcReplicas = srcStorageElement->mReplicas.size();
+            std::uniform_int_distribution<std::size_t> rngSampler(0, numSrcReplicas);
             indexMap.clear();
             indexMap.reserve(static_cast<std::size_t>(numSrcReplicas/2.0) + 2);
             while(numSrcReplicas > 0 && numCreated <= numToCreatePerRSE)
             {
-                --numSrcReplicas;
-                std::uniform_int_distribution<std::size_t> rngSampler(0, numSrcReplicas);
-                std::size_t idx = rngSampler(*mRNGEngine);
+                std::size_t idx = rngSampler(*mRNGEngine) % numSrcReplicas;
 
+                --numSrcReplicas;
                 auto it = indexMap.find(numSrcReplicas);
                 std::size_t endIdx =  (it != indexMap.end()) ? it->second : numSrcReplicas;
 
@@ -289,37 +300,69 @@ public:
                     // if not endIdx will be == numSrcReplicas and wont occur again anyway
                     idx = endIdx;
                 }
-				SFile* const file = srcStorageElement->mReplicas[idx].GetFile();
-				CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(*mRNGEngine)];
-                mTransferMgr->CreateTransfer(srcStorageElement, &(dstStorageElement->CreateReplica(file)));
-				++numCreated;
-				std::cout << idx << std::endl;
+
+                SFile* const file = srcStorageElement->mReplicas[idx]->GetFile();
+                CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(*mRNGEngine)];
+                SReplica* const newReplica = dstStorageElement->CreateReplica(file);
+                if(newReplica != nullptr)
+                {
+                    mTransferMgr->CreateTransfer(srcStorageElement, newReplica);
+                    ++numCreated;
+                }
             }
+            totalTransfersCreated += numCreated;
+        }*/
+        for(auto& srcStorageElement : mSrcStorageElements)
+        {
+            std::uint32_t numCreated = 0;
+            std::size_t numSrcReplicas = srcStorageElement->mReplicas.size();
+            std::uniform_int_distribution<std::size_t> rngSampler(0, numSrcReplicas);
+            while(numSrcReplicas > 0 && numCreated <= numToCreatePerRSE)
+            {
+                std::size_t idx = rngSampler(*mRNGEngine) % numSrcReplicas;
+                auto& curReplica = srcStorageElement->mReplicas[idx];
+                auto& lastReplica = srcStorageElement->mReplicas.back();
+                SFile* const file = curReplica->GetFile();
+                CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(*mRNGEngine)];
+                SReplica* const newReplica = dstStorageElement->CreateReplica(file);
+                if(newReplica != nullptr)
+                {
+                    mTransferMgr->CreateTransfer(srcStorageElement, newReplica);
+                    ++numCreated;
+                }
+
+                --numSrcReplicas;
+                std::swap(curReplica->mIndexAtStorageElement, lastReplica->mIndexAtStorageElement);
+                std::swap(curReplica, lastReplica);
+            }
+            totalTransfersCreated += numCreated;
         }
-        /*
-        # generate grid -> cloud
+        //std::cout<<"["<<now<<"]\nnumActive: "<<numActive<<"\nnumToCreate: "<<numToCreate<<"\ntotalCreated: "<<totalTransfersCreated<<std::endl;
+        mNextCallTick = now + mDelay;
+        schedule.push(this);
+    }
+};
 
-        for grid_rse_obj in self.grid_rses:
-            num_files = min(len(grid_rse_obj.replica_list), num_to_create_per_rse)
-            if (num_files + total_transfers_created) > num_to_create:
-                num_files = num_to_create - total_transfers_created
-            if num_files <= 0:
-                continue
-            total_transfers_created += num_files
-            replicas = random.sample(grid_rse_obj.replica_list, num_files)
-            cloud_rse_obj = npr.choice(self.cloud.bucket_list)
-            for replica in replicas:
-                if cloud_rse_obj.name in replica.file.rse_by_name:
-                    #log.warning('{} to {}'.format(grid_rse_obj.name, cloud_rse_obj.name))
-                    continue
-                self.new_transfers.append(self.rucio.create_transfer(replica.file, grid_rse_obj, cloud_rse_obj))
-        #log.debug('active: {}, to_create: {}, created: 0'.format(num_active, num_to_create), self.sim.now)
+class CHearbeat : public CScheduleable
+{
+private:
+    CRucio* mRucio;
+    CTransferManager* mTransferMgr;
+    std::uint32_t mDelay;
 
-        # generate cloud -> cloud
-            # 1. same multi regional location
-            # 2. between multi regional locations
-        # generate cloud -> else
-        */
+public:
+
+    CHearbeat(CRucio* rucio, CTransferManager* transferMgr, std::uint32_t delay)
+        : mRucio(rucio),
+		  mTransferMgr(transferMgr),
+          mDelay(delay)
+    {}
+
+
+    void OnUpdate(ScheduleType& schedule, std::uint64_t now) final
+    {
+        std::cout<<"["<<now<<"]: numFiles="<<mRucio->mFiles.size()<<"; numTransfers="<<mTransferMgr->GetNumActiveTransfers()<<std::endl;
+
         mNextCallTick = now + mDelay;
         schedule.push(this);
     }
@@ -373,31 +416,38 @@ int main()
     std::unique_ptr<CBillingGenerator> billingGen(new CBillingGenerator(gcp.get()));
     std::unique_ptr<CReaper> reaper(new CReaper(rucio.get()));
     std::unique_ptr<CTransferManager> transferMgr(new CTransferManager);
-    std::unique_ptr<CDataGenerator> dataGen(new CDataGenerator(rucio.get(), RNGEngine.get(), 50));
+    std::unique_ptr<CDataGenerator> dataGen(new CDataGenerator(rucio.get(), RNGEngine.get(), 75));
 
-    const std::uint32_t generationDelay = 30;
+    const std::uint32_t generationDelay = 50;
     std::unique_ptr<CTransferNumberGenerator> transferNumberGen(new CTransferNumberGenerator(RNGEngine.get(), 15, 600, generationDelay, 0.075));
     std::unique_ptr<CTransferGenerator> g2cTransferGen(new CTransferGenerator(RNGEngine.get(), transferMgr.get(), transferNumberGen.get(), generationDelay));
 
 
     gcp->SetupDefaultCloud();
 
-    dataGen->mStorageElements.push_back(&(rucio->CreateGridSite("ASGC", "asia").CreateStorageElement("TAIWAN_DATADISK")));
-    dataGen->mStorageElements.push_back(&(rucio->CreateGridSite("CERN", "europe").CreateStorageElement("CERN_DATADISK")));
-    dataGen->mStorageElements.push_back(&(rucio->CreateGridSite("BNL", "us").CreateStorageElement("BNL_DATADISK")));
+    dataGen->mStorageElements.push_back(rucio->CreateGridSite("ASGC", "asia")->CreateStorageElement("TAIWAN_DATADISK"));
+    dataGen->mStorageElements.push_back(rucio->CreateGridSite("CERN", "europe")->CreateStorageElement("CERN_DATADISK"));
+    dataGen->mStorageElements.push_back(rucio->CreateGridSite("BNL", "us")->CreateStorageElement("BNL_DATADISK"));
+
+    for(auto& gridSite : rucio->mGridSites)
+        for(auto& region : gcp->mRegions)
+            gridSite->CreateLinkSelector(region.get(), ONE_GiB);
+
 
     g2cTransferGen->mSrcStorageElements = dataGen->mStorageElements;
     for(auto& region : gcp->mRegions)
-        for(auto& bucket : region.mStorageElements)
-            g2cTransferGen->mDstStorageElements.push_back(&bucket);
+        for(auto& bucket : region->mStorageElements)
+            g2cTransferGen->mDstStorageElements.push_back(bucket.get());
 
     schedule.push(billingGen.get());
     schedule.push(transferMgr.get());
     schedule.push(dataGen.get());
     schedule.push(reaper.get());
     schedule.push(g2cTransferGen.get());
+    std::unique_ptr<CHearbeat> heartbeat(new CHearbeat(rucio.get(), transferMgr.get(), 10000));
+    schedule.push(heartbeat.get());
 
-    const std::uint64_t MAX_TICK = 3600 * 24 * 31;
+    const std::uint64_t MAX_TICK = 200000;//3600 * 24 * 31;
     std::uint64_t curTick = 0;
     while(curTick<MAX_TICK && !schedule.empty())
     {
@@ -407,6 +457,4 @@ int main()
         curTick = element->mNextCallTick;
         element->OnUpdate(schedule, curTick);
     }
-	std::cout << reaper->n << std::endl;
-	std::cin >> reaper->n;
 }

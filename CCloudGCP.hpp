@@ -1,11 +1,11 @@
 #pragma once
 
-#include "CRucio.hpp"
-
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "CRucio.hpp"
 
 namespace gcp
 {
@@ -20,8 +20,8 @@ namespace gcp
 	public:
 		CBucket(std::string&& name, CRegion* region);
 		CBucket(CBucket&&) = default;
-		virtual void OnIncreaseReplica(std::uint64_t amount, std::uint64_t now) override;
-		virtual void OnRemoveReplica(const SReplica& replica, std::uint64_t now) override;
+		virtual void OnIncreaseReplica(std::uint64_t amount, std::uint64_t now) final;
+		virtual void OnRemoveReplica(const SReplica* replica, std::uint64_t now) final;
 
 		double CalculateStorageCosts(std::uint64_t now);
 	};
@@ -34,11 +34,11 @@ namespace gcp
 		double mStoragePriceCHF;
 
 	public:
-		std::vector<CBucket> mStorageElements;
+		std::vector<std::unique_ptr<CBucket>> mStorageElements;
 
 		CRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId);
 
-		auto CreateStorageElement(std::string&& name) -> CBucket&;
+		auto CreateStorageElement(std::string&& name) -> CBucket* final;
 		double CalculateStorageCosts(std::uint64_t now);
 		double CalculateNetworkCosts(std::uint64_t now);
 
@@ -51,13 +51,10 @@ namespace gcp
 	class CCloud
 	{
 	public:
-		std::vector<CRegion> mRegions;
+		std::vector<std::unique_ptr<CRegion>> mRegions;
 
-		auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion&;
+		auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion*;
 
-
-		bool IsSameLocation(const CRegion& r1, const CRegion& r2) const;
-		bool IsSameMultiLocation(const CRegion& r1, const CRegion& r2) const;
 		auto ProcessBilling(std::uint64_t now) -> std::pair<double, double>;
 		void SetupDefaultCloud();
 

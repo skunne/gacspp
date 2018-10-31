@@ -1,12 +1,8 @@
-#include "CCloudGCP.hpp"
-
 #include <cassert>
 #include <unordered_map>
 
-#define ONE_GiB (1073741824.0) // 2^30
-#define BYTES_TO_GiB(x) ((x)/ONE_GiB)
-#define SECONDS_PER_MONTH (2592000.0)
-#define SECONDS_TO_MONTHS(x) ((x)/SECONDS_PER_MONTH)
+#include "constants.h"
+#include "CCloudGCP.hpp"
 
 namespace gcp
 {
@@ -21,9 +17,9 @@ namespace gcp
 		mBucketEvents.emplace_back(now, amount);
 		CStorageElement::OnIncreaseReplica(amount, now);
 	}
-	void CBucket::OnRemoveReplica(const SReplica& replica, std::uint64_t now)
+	void CBucket::OnRemoveReplica(const SReplica* replica, std::uint64_t now)
 	{
-		mBucketEvents.emplace_back(now, -(static_cast<std::int64_t>(replica.GetCurSize())));
+		mBucketEvents.emplace_back(now, -(static_cast<std::int64_t>(replica->GetCurSize())));
 		CStorageElement::OnRemoveReplica(replica, now);
 	}
 
@@ -74,46 +70,38 @@ namespace gcp
 		mMultiLocationIdx(multiLocationIdx),
 		mStoragePriceCHF(storagePriceCHF)
 	{}
-	auto CRegion::CreateStorageElement(std::string&& name) -> CBucket&
+	auto CRegion::CreateStorageElement(std::string&& name) -> CBucket*
 	{
-		mStorageElements.emplace_back(std::move(name), this);
-		return mStorageElements.back();
+		CBucket* newBucket = new CBucket(std::move(name), this);
+		mStorageElements.emplace_back(newBucket);
+		return newBucket;
 	}
 	double CRegion::CalculateStorageCosts(std::uint64_t now)
 	{
 		double regionStorageCosts = 0;
-		for (auto &bucket : mStorageElements)
-			regionStorageCosts += bucket.CalculateStorageCosts(now);
+		for (auto& bucket : mStorageElements)
+			regionStorageCosts += bucket->CalculateStorageCosts(now);
 		return regionStorageCosts;
 	}
 	double CRegion::CalculateNetworkCosts(std::uint64_t now)
 	{
 		double regionNetworkCosts = 0;
-		for (auto &linkSelector : mLinkSelectors)
+		for (auto& linkSelector : mLinkSelectors)
 		{
-			regionNetworkCosts += CalculateNetworkCostsRecursive(linkSelector.mUsedTraffic, linkSelector.mNetworkPrice.cbegin(), linkSelector.mNetworkPrice.cend());
-			linkSelector.mUsedTraffic = 0;
+			regionNetworkCosts += CalculateNetworkCostsRecursive(linkSelector->mUsedTraffic, linkSelector->mNetworkPrice.cbegin(), linkSelector->mNetworkPrice.cend());
+			linkSelector->mUsedTraffic = 0;
 		}
 		return regionNetworkCosts;
 	}
-	auto CCloud::CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion&
+	auto CCloud::CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion*
 	{
-		mRegions.emplace_back(multiLocationIdx, std::move(name), std::move(locationName), storagePriceCHF, std::move(skuId));
-		return mRegions.back();
+		CRegion* newRegion = new CRegion(multiLocationIdx, std::move(name), std::move(locationName), storagePriceCHF, std::move(skuId));
+		mRegions.emplace_back(newRegion);
+		return newRegion;
 	}
 
 
 
-	bool CCloud::IsSameLocation(const CRegion& r1, const CRegion& r2) const
-	{
-		return r1.GetName() == r1.GetName();
-	}
-	bool CCloud::IsSameMultiLocation(const CRegion& r1, const CRegion& r2) const
-	{
-		if (r1.GetMultiLocationIdx() == r2.GetMultiLocationIdx())
-			return !IsSameLocation(r1, r2);
-		return false;
-	}
 	auto CCloud::ProcessBilling(std::uint64_t now) -> std::pair<double, double>
 	{
 		/*
@@ -122,10 +110,10 @@ namespace gcp
 		*/
 		double totalStorageCosts = 0;
 		double totalNetworkCosts = 0;
-		for (auto &region : mRegions)
+		for (auto& region : mRegions)
 		{
-			const double regionStorageCosts = region.CalculateStorageCosts(now);
-			const double regionNetworkCosts = region.CalculateNetworkCosts(now);
+			const double regionStorageCosts = region->CalculateStorageCosts(now);
+			const double regionNetworkCosts = region->CalculateNetworkCosts(now);
 			//storageCosts[bucket.GetName()] = bucketCosts;
 			totalStorageCosts += regionStorageCosts;
 			totalNetworkCosts += regionNetworkCosts;
@@ -178,7 +166,7 @@ namespace gcp
 		CreateRegion(4, "us-east1", "South Carolina", 0.01978300, "E5F0-6A5D-7BAD");
 		CreateRegion(4, "us-east4", "Northern Virginia", 0.02275045, "5F7A-5173-CF5B");
 		for(auto& region : mRegions)
-			region.CreateStorageElement((region.GetName() + "_testbucket"));
+			region->CreateStorageElement((region->GetName() + "_testbucket"));
 
 		//CreateRegion("us", "northamerica-northeast1", "Montreal", 0.02275045, "E466-8D73-08F4");
 		//CreateRegion("northamerica-northeast1', 'northamerica-northeast1', 'Montreal', 0.02275045, "E466-8D73-08F4")
@@ -244,42 +232,49 @@ namespace gcp
 			},
 			{ 3, { { 4,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } } } }
 		};
+
 		for (auto& srcRegion : mRegions)
 		{
-			const auto srcRegionMultiLocationIdx = srcRegion.GetMultiLocationIdx();
+			const auto srcRegionMultiLocationIdx = srcRegion->GetMultiLocationIdx();
 			for (auto& dstRegion : mRegions)
 			{
-				const auto dstRegionMultiLocationIdx = dstRegion.GetMultiLocationIdx();
-				CLinkSelector& linkSelector = srcRegion.CreateLinkSelector(dstRegion, 1<<30);
-				const bool isSameLocation = IsSameLocation(srcRegion, dstRegion);
-				const bool isSameMultiLocation = IsSameMultiLocation(srcRegion, dstRegion);
-				if (!isSameLocation && !isSameMultiLocation)
+				const auto dstRegionMultiLocationIdx = dstRegion->GetMultiLocationIdx();
+				CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion.get(), 1<<30);
+				const bool isSameLocation = (*srcRegion) == (*dstRegion);
+				if (!isSameLocation && (srcRegionMultiLocationIdx != dstRegionMultiLocationIdx))
 				{
 					OuterMapType::const_iterator outerIt = priceWW.find(srcRegionMultiLocationIdx);
 					InnerMapType::const_iterator innerIt;
+					if(outerIt != priceWW.cend())
+					{
+						//found the srcRegion idx in the outer map
+						//lets see if we find the dstRegion idx in the inner map
+						innerIt = outerIt->second.find(dstRegionMultiLocationIdx);
+						if(innerIt == outerIt->second.cend())
+							outerIt = priceWW.cend(); //Nope. Reset outerIt and try with swapped order
+					}
 					if(outerIt == priceWW.cend())
 					{
 						outerIt = priceWW.find(dstRegionMultiLocationIdx);
 						assert(outerIt != priceWW.cend());
 						innerIt = outerIt->second.find(srcRegionMultiLocationIdx);
 					}
-					else
-						innerIt = outerIt->second.find(dstRegionMultiLocationIdx);
+
 					assert(innerIt != outerIt->second.cend());
 
-					linkSelector.mNetworkPrice = innerIt->second;
+					linkSelector->mNetworkPrice = innerIt->second;
 				}
 				else if (isSameLocation)
 				{
 					// 2. case: r1 and r2 are the same region
 					//linkselector.network_price_chf = priceSameRegion
-					linkSelector.mNetworkPrice = priceSameRegion;
+					linkSelector->mNetworkPrice = priceSameRegion;
 				}
 				else
 				{
 					// 3. case: region r1 is inside the multi region r2
 					//linkselector.network_price_chf = priceSameMulti
-					linkSelector.mNetworkPrice = priceSameMulti;
+					linkSelector->mNetworkPrice = priceSameMulti;
 				}
 			}
 		}

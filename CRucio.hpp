@@ -1,15 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <unordered_set>
 
-
-#define ONE_GiB (1073741824.0) // 2^30
-#define BYTES_TO_GiB(x) ((x)/ONE_GiB)
-#define SECONDS_PER_MONTH (2592000.0)
-#define SECONDS_TO_MONTHS(x) ((x)/SECONDS_PER_MONTH)
 
 
 class CStorageElement;
@@ -37,12 +34,13 @@ public:
 private:
     static IdType IdCounter;
 
-	//std::vector<SReplica> mReplicas;
-
     IdType mId;
     std::uint32_t mSize;
 
 public:
+	std::vector<SReplica*> mReplicas;
+	//std::unordered_set<CStorageElement*> mStorageElements;
+
     std::uint64_t mExpiresAt;
 
     SFile(std::uint32_t size, std::uint64_t expiresAt);
@@ -52,7 +50,6 @@ public:
     SFile(SFile const&) = delete;
     SFile& operator=(SFile const&) = delete;
 
-	//auto CreateReplica(CStorageElement& storageElement) -> SReplica&;
     inline auto GetId() const -> IdType
     {return mId;}
     inline auto GetSize() const -> std::uint32_t
@@ -91,12 +88,18 @@ public:
 
 class ISite
 {
+public:
+    typedef std::uint64_t IdType;
+
 private:
+    static IdType IdCounter;
+	IdType mId;
     std::string mName;
 	std::string mLocationName;
 
 protected:
-    std::vector<CLinkSelector> mLinkSelectors;
+    std::vector<std::unique_ptr<CLinkSelector>> mLinkSelectors;
+	std::unordered_map<IdType, std::size_t> mDstSiteIdToLinkSelectorIdx;
 
 public:
 	ISite(std::string&& name, std::string&& locationName);
@@ -108,11 +111,18 @@ public:
 	ISite(ISite const&) = delete;
 	ISite& operator=(ISite const&) = delete;
 
-	virtual auto CreateLinkSelector(ISite& dstSite, std::uint32_t bandwidth) -> CLinkSelector&;
-    virtual auto CreateStorageElement(std::string&& name) -> CStorageElement& = 0;
+	inline bool operator==(const ISite& b) const
+	{return mId == b.mId;}
+	inline bool operator!=(const ISite& b) const
+	{return mId != b.mId;}
 
-	auto GetLinkSelector(ISite* dstSite) -> CLinkSelector*;
+	virtual auto CreateLinkSelector(const ISite* dstSite, std::uint32_t bandwidth) -> CLinkSelector*;
+    virtual auto CreateStorageElement(std::string&& name) -> CStorageElement* = 0;
 
+	auto GetLinkSelector(const ISite* dstSite) -> CLinkSelector*;
+
+	inline auto GetId() const -> IdType
+	{return mId;}
     inline auto GetName() const -> const std::string&
     {return mName;}
 	inline auto GetLocationName() const -> const std::string&
@@ -122,7 +132,7 @@ public:
 class CGridSite : public ISite
 {
 private:
-	std::vector<CStorageElement> mStorageElements;
+	std::vector<std::unique_ptr<CStorageElement>> mStorageElements;
 
 public:
 	CGridSite(std::string&& name, std::string&& locationName);
@@ -132,7 +142,7 @@ public:
 	CGridSite(CGridSite const&) = delete;
 	CGridSite& operator=(CGridSite const&) = delete;
 
-	auto CreateStorageElement(std::string&& name) -> CStorageElement&;
+	auto CreateStorageElement(std::string&& name) -> CStorageElement*;
 };
 
 class CStorageElement
@@ -146,7 +156,7 @@ protected:
     std::uint64_t mUsedStorage = 0;
 
 public:
-	std::vector<SReplica> mReplicas;
+	std::vector<std::unique_ptr<SReplica>> mReplicas;
 
 	CStorageElement(std::string&& name, ISite* site);
     CStorageElement(CStorageElement&&) = default;
@@ -155,13 +165,18 @@ public:
     CStorageElement(CStorageElement const&) = delete;
     CStorageElement& operator=(CStorageElement const&) = delete;
 
-	auto CreateReplica(SFile* file) -> SReplica&;
+	auto CreateReplica(SFile* file) -> SReplica*;
+	//inline bool HasReplica(const SFile* const file) const
+	//{return mFileIds.find(file->GetId()) != mFileIds.end();}
 
     virtual void OnIncreaseReplica(std::uint64_t amount, std::uint64_t now);
-    virtual void OnRemoveReplica(const SReplica& replica, std::uint64_t now);
+    virtual void OnRemoveReplica(const SReplica* replica, std::uint64_t now);
+
     inline auto GetName() const -> const std::string&
     {return mName;}
     inline auto GetSite() const -> const ISite*
+    {return mSite;}
+    inline auto GetSite() -> ISite*
     {return mSite;}
 };
 
@@ -169,10 +184,10 @@ class CRucio
 {
 public:
     std::vector<SFile> mFiles;
-    std::vector<CGridSite> mGridSites;
+    std::vector<std::unique_ptr<CGridSite>> mGridSites;
 
     CRucio();
     auto CreateFile(std::uint32_t size, std::uint64_t expiresAt) -> SFile&;
-    auto CreateGridSite(std::string&& name, std::string&& locationName) -> CGridSite&;
+    auto CreateGridSite(std::string&& name, std::string&& locationName) -> CGridSite*;
     auto RunReaper(std::uint64_t now) -> std::size_t;
 };
