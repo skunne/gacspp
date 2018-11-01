@@ -12,8 +12,8 @@ SFile::SFile(std::uint32_t size, std::uint64_t expiresAt)
       mSize(size),
       mExpiresAt(expiresAt)
 {
-    //mStorageElements.reserve(8);
     mReplicas.reserve(8);
+    mStorageElements.reserve(8);
 }
 
 SReplica::SReplica(SFile* file, CStorageElement* storageElement, std::size_t indexAtStorageElement)
@@ -23,9 +23,17 @@ SReplica::SReplica(SFile* file, CStorageElement* storageElement, std::size_t ind
 {}
 auto SReplica::Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_t
 {
-    mCurSize = std::min(mCurSize + amount, mFile->GetSize());
+    const std::uint32_t maxSize = mFile->GetSize();
+    std::uint64_t newSize = mCurSize;
+    newSize += amount;
+    if (newSize > maxSize)
+    {
+        amount = maxSize - mCurSize;
+        newSize = maxSize;
+    }
+    mCurSize = static_cast<std::uint32_t>(newSize);
     mStorageElement->OnIncreaseReplica(amount, now);
-    return mCurSize;
+    return amount;
 }
 void SReplica::Remove(std::uint64_t now)
 {
@@ -38,11 +46,7 @@ ISite::ISite(std::string&& name, std::string&& locationName)
 	: mId(++IdCounter),
       mName(std::move(name)),
 	  mLocationName(std::move(locationName))
-{
-    //mLinkSelectors.reserve(32);
-	//mDstSiteIdToLinkSelectorIdx.reserve(32);
-    //std::cout<<mName<<": "<<mId<<std::endl;
-}
+{}
 auto ISite::CreateLinkSelector(const ISite* dstSite, std::uint32_t bandwidth) -> CLinkSelector*
 {
     auto result = mDstSiteIdToLinkSelectorIdx.insert({dstSite->mId, mLinkSelectors.size()});
@@ -78,25 +82,21 @@ CStorageElement::CStorageElement(std::string&& name, ISite* site)
 	: mName(std::move(name)),
 	  mSite(site)
 {
-	mFileIds.reserve(100000);
+	//mFileIds.reserve(100000);
 	mReplicas.reserve(100000);
 }
-#include <iostream>
 auto CStorageElement::CreateReplica(SFile* file) -> SReplica*
 {
-	const auto result = mFileIds.insert(file->GetId());
-    //const auto result = file->mStorageElements.insert(this);
+    const auto result = file->mStorageElements.insert(this);
+    //const auto result = mFileIds.insert(file->GetId());
 
-    if(!result.second)
-    {
-        //std::cout<<mFileIds.size()<<std::endl;
+    if (!result.second)
         return nullptr;
-    }
 
     SReplica* newReplica = new SReplica(file, this, mReplicas.size());
-	mReplicas.emplace_back(newReplica);
+    mReplicas.emplace_back(newReplica);
     file->mReplicas.push_back(newReplica);
-	return newReplica;
+    return newReplica;
 }
 
 void CStorageElement::OnIncreaseReplica(std::uint64_t amount, std::uint64_t now)
@@ -106,15 +106,10 @@ void CStorageElement::OnIncreaseReplica(std::uint64_t amount, std::uint64_t now)
 
 void CStorageElement::OnRemoveReplica(const SReplica* replica, std::uint64_t now)
 {
-    const auto FileIdIterator = mFileIds.find(replica->GetFile()->GetId());
+    //const auto FileIdIterator = mFileIds.find(replica->GetFile()->GetId());
     const std::size_t idxToDelete = replica->mIndexAtStorageElement;
     const std::uint32_t curSize = replica->GetCurSize();
-    if(FileIdIterator != mFileIds.cend())
-    {
-        //134780
-        std::cout<<replica->GetFile()->GetId()<<std::endl;
-        assert(false);
-    }
+
     //assert(FileIdIterator != mFileIds.cend());
     assert(idxToDelete < mReplicas.size());
     assert(curSize <= mUsedStorage);
@@ -123,7 +118,7 @@ void CStorageElement::OnRemoveReplica(const SReplica* replica, std::uint64_t now
     std::size_t& idxLastReplica = lastReplica->mIndexAtStorageElement;
 
     mUsedStorage -= curSize;
-    mFileIds.erase(FileIdIterator);
+    //mFileIds.erase(FileIdIterator);
     if(idxToDelete != idxLastReplica)
     {
         idxLastReplica = idxToDelete;
@@ -139,10 +134,11 @@ CRucio::CRucio()
     mFiles.reserve(150000);
 }
 
-auto CRucio::CreateFile(std::uint32_t size, std::uint64_t expiresAt) -> SFile&
+auto CRucio::CreateFile(std::uint32_t size, std::uint64_t expiresAt) -> SFile*
 {
-    mFiles.emplace_back(size, expiresAt);
-    return mFiles.back();
+    SFile* newFile = new SFile(size, expiresAt);
+    mFiles.emplace_back(newFile);
+    return newFile;
 }
 auto CRucio::CreateGridSite(std::string&& name, std::string&& locationName) -> CGridSite*
 {
@@ -160,9 +156,9 @@ auto CRucio::RunReaper(std::uint64_t now) -> std::size_t
     std::size_t frontIdx = 0;
     std::size_t backIdx = numFiles - 1;
 
-    while(backIdx > frontIdx && mFiles[backIdx].mExpiresAt <= now)
+    while(backIdx > frontIdx && mFiles[backIdx]->mExpiresAt <= now)
     {
-        for(auto replica : mFiles[backIdx].mReplicas)
+        for(auto replica : mFiles[backIdx]->mReplicas)
             replica->Remove(now);
         mFiles.pop_back();
         --backIdx;
@@ -170,25 +166,25 @@ auto CRucio::RunReaper(std::uint64_t now) -> std::size_t
 
     while(frontIdx < backIdx)
     {
-        if(mFiles[frontIdx].mExpiresAt <= now)
+        if(mFiles[frontIdx]->mExpiresAt <= now)
         {
             std::swap(mFiles[frontIdx], mFiles[backIdx]);
             do
             {
-                for(auto replica : mFiles[backIdx].mReplicas)
+                for(auto replica : mFiles[backIdx]->mReplicas)
                     replica->Remove(now);
                 mFiles.pop_back();
                 --backIdx;
-            } while(backIdx > frontIdx && mFiles[backIdx].mExpiresAt <= now);
+            } while(backIdx > frontIdx && mFiles[backIdx]->mExpiresAt <= now);
         }
         ++frontIdx;
     }
 
     if(backIdx == 0)
     {
-        if(mFiles.back().mExpiresAt <= now)
+        if(mFiles.back()->mExpiresAt <= now)
         {
-            for(auto replica : mFiles.back().mReplicas)
+            for(auto replica : mFiles.back()->mReplicas)
                 replica->Remove(now);
             mFiles.pop_back();
         }

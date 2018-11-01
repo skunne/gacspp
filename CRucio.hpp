@@ -39,7 +39,7 @@ private:
 
 public:
 	std::vector<SReplica*> mReplicas;
-	//std::unordered_set<CStorageElement*> mStorageElements;
+    std::unordered_set<CStorageElement*> mStorageElements;
 
     std::uint64_t mExpiresAt;
 
@@ -81,8 +81,8 @@ public:
 
     inline auto GetFile() -> SFile*
     {return mFile;}
-	inline auto GetFile() const -> const SFile*
-	{return mFile;}
+    inline auto GetFile() const -> const SFile*
+    {return mFile;}
     inline auto GetStorageElement() -> CStorageElement*
     {return mStorageElement;}
     inline auto GetCurSize() const -> std::uint32_t
@@ -169,8 +169,6 @@ public:
     CStorageElement& operator=(CStorageElement const&) = delete;
 
 	auto CreateReplica(SFile* file) -> SReplica*;
-	//inline bool HasReplica(const SFile* const file) const
-	//{return mFileIds.find(file->GetId()) != mFileIds.end();}
 
     virtual void OnIncreaseReplica(std::uint64_t amount, std::uint64_t now);
     virtual void OnRemoveReplica(const SReplica* replica, std::uint64_t now);
@@ -186,11 +184,11 @@ public:
 class CRucio
 {
 public:
-    std::vector<SFile> mFiles;
+    std::vector<std::unique_ptr<SFile>> mFiles;
     std::vector<std::unique_ptr<CGridSite>> mGridSites;
 
     CRucio();
-    auto CreateFile(std::uint32_t size, std::uint64_t expiresAt) -> SFile&;
+    auto CreateFile(std::uint32_t size, std::uint64_t expiresAt) -> SFile*;
     auto CreateGridSite(std::string&& name, std::string&& locationName) -> CGridSite*;
     auto RunReaper(std::uint64_t now) -> std::size_t;
 };

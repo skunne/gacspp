@@ -1,17 +1,12 @@
-#include <iostream>
 #include <algorithm>
-#include <chrono>
-#include <cmath>
-#include <cstdint>
 #include <cassert>
+#include <chrono>
+#include <cstdint>
+#include <iomanip>
+#include <iostream>
 #include <memory>
 #include <random>
-#include <unordered_map>
-
-//#define ENABLE_PLOTS
-#ifdef ENABLE_PLOTS
-#include <mgl2/qt.h>
-#endif
+#include <sstream>
 
 #include "constants.h"
 #include "CRucio.hpp"
@@ -19,8 +14,6 @@
 #include "CScheduleable.hpp"
 
 typedef std::minstd_rand RNGEngineType;
-
-
 
 class CDataGenerator : public CScheduleable
 {
@@ -48,7 +41,7 @@ private:
             const std::uint32_t fileSize = static_cast<std::uint32_t>( std::abs(mFileSizeRNG(*mRNGEngine)) );
             const std::uint64_t expiresAt = now + static_cast<std::uint64_t>( std::abs(mFileLifetimeRNG(*mRNGEngine)) );
 
-            SFile& file = mRucio->CreateFile(fileSize, expiresAt);
+            SFile* const file = mRucio->CreateFile(fileSize, expiresAt);
             bytesOfFilesGen += fileSize;
 
             auto reverseRSEIt = mStorageElements.rbegin();
@@ -56,7 +49,7 @@ private:
             for(std::uint32_t numCreated = 0; numCreated<numReplicasPerFile; ++numCreated)
             {
                 auto selectedElementIt = mStorageElements.begin() + (rngSampler(*mRNGEngine) % (numStorageElements - numCreated));
-                (*selectedElementIt)->CreateReplica(&file)->Increase(fileSize, now);
+                (*selectedElementIt)->CreateReplica(file)->Increase(fileSize, now);
                 std::iter_swap(selectedElementIt, reverseRSEIt);
 				++reverseRSEIt;
             }
@@ -120,9 +113,7 @@ public:
     void OnUpdate(ScheduleType& schedule, std::uint64_t now) final
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
-        //std::cout<<mRucio->mFiles.size()<<" files stored at "<<now<<std::endl;
         mRucio->RunReaper(now);
-        //std::cout<<numDeleted<<" reaper deletions at "<<now<<std::endl;
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + 600;
         schedule.push(this);
@@ -200,11 +191,9 @@ public:
             std::uint32_t amount = static_cast<std::uint32_t>((linkSelector->mBandwidth / static_cast<double>(linkSelector->mNumActiveTransfers)) * timeDiff);
 
             SReplica* const dstReplica = mActiveTransfers[idx].mDstReplica;
-            const std::uint32_t maxSize = dstReplica->GetFile()->GetSize();
-            const std::uint32_t oldSize = dstReplica->GetCurSize();
-            if(dstReplica->Increase(amount, now) == maxSize)
+            amount = dstReplica->Increase(amount, now);
+            if(dstReplica->IsComplete())
             {
-                amount = maxSize - oldSize;
                 mActiveTransfers[idx] = std::move(mActiveTransfers.back());
                 mActiveTransfers.pop_back();
                 linkSelector->mNumActiveTransfers -= 1;
@@ -266,7 +255,6 @@ public:
           mDelay(delay)
     {}
 
-
     void OnUpdate(ScheduleType& schedule, std::uint64_t now) final
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
@@ -276,49 +264,6 @@ public:
         const std::uint32_t numToCreatePerRSE = 1 + static_cast<std::uint32_t>( numToCreate/static_cast<double>(mSrcStorageElements.size()) );
         std::uint32_t totalTransfersCreated = 0;
         std::uniform_int_distribution<std::size_t> dstStorageElementRndChooser(0, mDstStorageElements.size()-1);
-        /*std::unordered_map<std::size_t, std::size_t> indexMap;
-        for(auto& srcStorageElement : mSrcStorageElements)
-        {
-            std::uint32_t numCreated = 0;
-            std::size_t numSrcReplicas = srcStorageElement->mReplicas.size();
-            std::uniform_int_distribution<std::size_t> rngSampler(0, numSrcReplicas);
-            indexMap.clear();
-            indexMap.reserve(static_cast<std::size_t>(numSrcReplicas/2.0) + 2);
-            while(numSrcReplicas > 0 && numCreated <= numToCreatePerRSE)
-            {
-                std::size_t idx = rngSampler(*mRNGEngine) % numSrcReplicas;
-
-                --numSrcReplicas;
-                auto it = indexMap.find(numSrcReplicas);
-                std::size_t endIdx =  (it != indexMap.end()) ? it->second : numSrcReplicas;
-
-                if(idx != numSrcReplicas)
-                {
-                    auto result = indexMap.insert({idx, endIdx});
-                    if(!result.second) //idx already used
-                    {
-                        idx = result.first->second;
-                        result.first->second = endIdx;
-                    }
-                }
-                else // idx addresses "last" element
-                {
-                    // if numSrcReplicas was used before endIdx will be the resolved idx
-                    // if not endIdx will be == numSrcReplicas and wont occur again anyway
-                    idx = endIdx;
-                }
-
-                SFile* const file = srcStorageElement->mReplicas[idx]->GetFile();
-                CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(*mRNGEngine)];
-                SReplica* const newReplica = dstStorageElement->CreateReplica(file);
-                if(newReplica != nullptr)
-                {
-                    mTransferMgr->CreateTransfer(srcStorageElement, newReplica);
-                    ++numCreated;
-                }
-            }
-            totalTransfersCreated += numCreated;
-        }*/
         for(auto& srcStorageElement : mSrcStorageElements)
         {
             std::uint32_t numCreated = 0;
@@ -346,7 +291,9 @@ public:
             }
             totalTransfersCreated += numCreated;
         }
+
         //std::cout<<"["<<now<<"]\nnumActive: "<<numActive<<"\nnumToCreate: "<<numToCreate<<"\ntotalCreated: "<<totalTransfersCreated<<std::endl;
+
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mDelay;
         schedule.push(this);
@@ -369,66 +316,48 @@ public:
         : mRucio(rucio),
 		  mTransferMgr(transferMgr),
           mDelay(delay)
-    {}
+    {
+        mTimeLastUpdate = std::chrono::high_resolution_clock::now();
+    }
 
 
     void OnUpdate(ScheduleType& schedule, std::uint64_t now) final
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> timeDiff = curRealtime - mTimeLastUpdate;
+        mUpdateDurationSummed += timeDiff;
         mTimeLastUpdate = curRealtime;
 
-        std::cout<<"["<<now<<"]: numFiles="<<mRucio->mFiles.size()<<"; numTransfers="<<mTransferMgr->GetNumActiveTransfers();
-        std::cout<<"; \tDuration: "<<timeDiff.count()<<std::endl;
+        std::stringstream statusOutput;
+        statusOutput << std::fixed << std::setprecision(2);
 
+        statusOutput << "[" << std::setw(6) << static_cast<std::uint32_t>(now / 1000);
+        statusOutput << "k]: numFiles: " << mRucio->mFiles.size() / 1000.0;
+        statusOutput << "k; numTransfers: " << mTransferMgr->GetNumActiveTransfers();
+        statusOutput << "; Runtime: " << mUpdateDurationSummed.count() << "\n";
+
+		std::size_t maxW = 0;
+		for (auto it : mProccessDurations)
+			if (it.first.size() > maxW)
+				maxW = it.first.size();
+
+        statusOutput << "  " << std::setw(maxW) << "Duration" << ": " << std::setw(7) << timeDiff.count() << "s\n";
         for(auto it : mProccessDurations)
         {
-            std::cout<<"\t"<<it.first<<": "<<it.second->count()<<std::endl;
+            statusOutput << "  " << std::setw(maxW) << it.first;
+            statusOutput << ": " << std::setw(7) << it.second->count();
+            statusOutput << "s ("<< std::setw(5) << (it.second->count() / timeDiff.count()) * 100 << "%)\n";
             *(it.second) = std::chrono::duration<double>::zero();
         }
+        std::cout << statusOutput.str() << std::endl;
 
         mNextCallTick = now + mDelay;
         schedule.push(this);
     }
 };
-#ifdef ENABLE_PLOTS
-int sample(mglGraph *gr)
-{
-    const int n = 1000;
-    RNGEngineType RNGEngine(42);
-    CTransferGenerator gen(nullptr, RNGEngine);
-    mglData y;
-    y.Create(n);
-    for(int i=0;i<n;++i)
-    {
-        auto a = gen.GetNumToCreate(i*30, 0);
-        y.a[i] = a;
-        //std::cout<<a<<std::endl;
-    }
-    gr->SetFontDef("cursor");
-    gr->SetOrigin(0,0,0);
-    gr->SetRanges(0,n,0,2000);
-    gr->SetTicks('x', 30, 2);
-    gr->SetTicks('y', 200, 0);
-    //gr->Label('x', "Simulation Time", 1);
-    //gr->Label('y', "NumTransfersToCreate", 1);
-
-    //gr->SubPlot(2,2,0,"");
-    //gr->Title("Plot plot (default)");
-
-    gr->Axis();
-	gr->Box();
-    gr->Plot(y);
-    return 0;
-}
-#endif
 
 int main()
 {
-#ifdef ENABLE_PLOTS
-    mglQT gr(sample,"MathGL examples");
-    return gr.Run();
-#endif
     //std::random_device rngDevice;
     std::unique_ptr<RNGEngineType> RNGEngine(new RNGEngineType(42));
 
@@ -490,4 +419,6 @@ int main()
         curTick = element->mNextCallTick;
         element->OnUpdate(schedule, curTick);
     }
+	int a;
+	std::cin >> a;
 }
