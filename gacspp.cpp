@@ -1,5 +1,6 @@
 #include <iostream>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cassert>
@@ -73,6 +74,7 @@ public:
 
     void OnUpdate(ScheduleType& schedule, std::uint64_t now) final
     {
+        auto curRealtime = std::chrono::high_resolution_clock::now();
         const std::uint32_t totalFilesToGen = std::max(static_cast<std::uint32_t>(mNumFilesRNG(*mRNGEngine)), 1U);
 /*
         std::uint32_t numFilesToGen = std::max(static_cast<std::uint32_t>(totalFilesToGen * 0.35f), 1U);
@@ -97,6 +99,7 @@ public:
         numFilesToGen = totalFilesToGen - numFilesToGen;
         CreateFilesAndReplicas(numFilesToGen, 2, now);
 
+        mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mTickFreq;
         schedule.push(this);
     }
@@ -108,7 +111,6 @@ private:
     CRucio *mRucio;
 
 public:
-	std::uint64_t n = 0;
     CReaper(CRucio *rucio)
         : mRucio(rucio)
     {
@@ -117,9 +119,11 @@ public:
 
     void OnUpdate(ScheduleType& schedule, std::uint64_t now) final
     {
+        auto curRealtime = std::chrono::high_resolution_clock::now();
         //std::cout<<mRucio->mFiles.size()<<" files stored at "<<now<<std::endl;
-        n += mRucio->RunReaper(now);
+        mRucio->RunReaper(now);
         //std::cout<<numDeleted<<" reaper deletions at "<<now<<std::endl;
+        mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + 600;
         schedule.push(this);
     }
@@ -187,6 +191,7 @@ public:
 
     void OnUpdate(ScheduleType& schedule, std::uint64_t now) final
     {
+        auto curRealtime = std::chrono::high_resolution_clock::now();
 		const std::uint32_t timeDiff = static_cast<std::uint32_t>(now - mLastUpdated);
         mLastUpdated = now;
         for(std::size_t idx=0; idx<mActiveTransfers.size(); ++idx)
@@ -206,6 +211,7 @@ public:
             }
             linkSelector->mUsedTraffic += amount;
         }
+        mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + 30;
         schedule.push(this);
     }
@@ -263,6 +269,7 @@ public:
 
     void OnUpdate(ScheduleType& schedule, std::uint64_t now) final
     {
+        auto curRealtime = std::chrono::high_resolution_clock::now();
         assert(mSrcStorageElements.size() > 0);
         const std::uint32_t numActive = static_cast<std::uint32_t>(mTransferMgr->GetNumActiveTransfers());
         const std::uint32_t numToCreate = mTransferNumberGen->GetNumToCreate(now, numActive);
@@ -320,24 +327,27 @@ public:
             while(numSrcReplicas > 0 && numCreated <= numToCreatePerRSE)
             {
                 std::size_t idx = rngSampler(*mRNGEngine) % numSrcReplicas;
-                auto& curReplica = srcStorageElement->mReplicas[idx];
-                auto& lastReplica = srcStorageElement->mReplicas.back();
-                SFile* const file = curReplica->GetFile();
-                CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(*mRNGEngine)];
-                SReplica* const newReplica = dstStorageElement->CreateReplica(file);
-                if(newReplica != nullptr)
-                {
-                    mTransferMgr->CreateTransfer(srcStorageElement, newReplica);
-                    ++numCreated;
-                }
-
                 --numSrcReplicas;
+
+                auto& curReplica = srcStorageElement->mReplicas[idx];
+                if(curReplica->IsComplete())
+                {
+                    CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(*mRNGEngine)];
+                    SReplica* const newReplica = dstStorageElement->CreateReplica(curReplica->GetFile());
+                    if(newReplica != nullptr)
+                    {
+                        mTransferMgr->CreateTransfer(srcStorageElement, newReplica);
+                        ++numCreated;
+                    }
+                }
+                auto& lastReplica = srcStorageElement->mReplicas[numSrcReplicas];
                 std::swap(curReplica->mIndexAtStorageElement, lastReplica->mIndexAtStorageElement);
                 std::swap(curReplica, lastReplica);
             }
             totalTransfersCreated += numCreated;
         }
         //std::cout<<"["<<now<<"]\nnumActive: "<<numActive<<"\nnumToCreate: "<<numToCreate<<"\ntotalCreated: "<<totalTransfersCreated<<std::endl;
+        mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mDelay;
         schedule.push(this);
     }
@@ -350,7 +360,10 @@ private:
     CTransferManager* mTransferMgr;
     std::uint32_t mDelay;
 
+    std::chrono::high_resolution_clock::time_point mTimeLastUpdate;
+
 public:
+    std::unordered_map<std::string, std::chrono::duration<double>*> mProccessDurations;
 
     CHearbeat(CRucio* rucio, CTransferManager* transferMgr, std::uint32_t delay)
         : mRucio(rucio),
@@ -361,7 +374,18 @@ public:
 
     void OnUpdate(ScheduleType& schedule, std::uint64_t now) final
     {
-        std::cout<<"["<<now<<"]: numFiles="<<mRucio->mFiles.size()<<"; numTransfers="<<mTransferMgr->GetNumActiveTransfers()<<std::endl;
+        auto curRealtime = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> timeDiff = curRealtime - mTimeLastUpdate;
+        mTimeLastUpdate = curRealtime;
+
+        std::cout<<"["<<now<<"]: numFiles="<<mRucio->mFiles.size()<<"; numTransfers="<<mTransferMgr->GetNumActiveTransfers();
+        std::cout<<"; \tDuration: "<<timeDiff.count()<<std::endl;
+
+        for(auto it : mProccessDurations)
+        {
+            std::cout<<"\t"<<it.first<<": "<<it.second->count()<<std::endl;
+            *(it.second) = std::chrono::duration<double>::zero();
+        }
 
         mNextCallTick = now + mDelay;
         schedule.push(this);
@@ -408,20 +432,30 @@ int main()
     //std::random_device rngDevice;
     std::unique_ptr<RNGEngineType> RNGEngine(new RNGEngineType(42));
 
+    const std::uint32_t transferGenerationDelay = 50;
+
     ScheduleType schedule;
 
+    //rucio and clouds
     std::unique_ptr<CRucio> rucio(new CRucio);
     std::unique_ptr<gcp::CCloud> gcp(new gcp::CCloud);
 
+    //proccesses
     std::unique_ptr<CBillingGenerator> billingGen(new CBillingGenerator(gcp.get()));
-    std::unique_ptr<CReaper> reaper(new CReaper(rucio.get()));
-    std::unique_ptr<CTransferManager> transferMgr(new CTransferManager);
     std::unique_ptr<CDataGenerator> dataGen(new CDataGenerator(rucio.get(), RNGEngine.get(), 75));
+    std::unique_ptr<CTransferManager> transferMgr(new CTransferManager);
 
-    const std::uint32_t generationDelay = 50;
-    std::unique_ptr<CTransferNumberGenerator> transferNumberGen(new CTransferNumberGenerator(RNGEngine.get(), 15, 600, generationDelay, 0.075));
-    std::unique_ptr<CTransferGenerator> g2cTransferGen(new CTransferGenerator(RNGEngine.get(), transferMgr.get(), transferNumberGen.get(), generationDelay));
+    std::unique_ptr<CTransferNumberGenerator> transferNumberGen(new CTransferNumberGenerator(RNGEngine.get(), 15, 600, transferGenerationDelay, 0.075));
+    std::unique_ptr<CTransferGenerator> g2cTransferGen(new CTransferGenerator(RNGEngine.get(), transferMgr.get(), transferNumberGen.get(), transferGenerationDelay));
 
+    std::unique_ptr<CReaper> reaper(new CReaper(rucio.get()));
+
+    std::unique_ptr<CHearbeat> heartbeat(new CHearbeat(rucio.get(), transferMgr.get(), 10000));
+    heartbeat->mNextCallTick = 10000;
+    heartbeat->mProccessDurations["DataGen"] = &(dataGen->mUpdateDurationSummed);
+    heartbeat->mProccessDurations["TransferUpdate"] = &(transferMgr->mUpdateDurationSummed);
+    heartbeat->mProccessDurations["G2CTransferGen"] = &(g2cTransferGen->mUpdateDurationSummed);
+    heartbeat->mProccessDurations["Reaper"] = &(reaper->mUpdateDurationSummed);
 
     gcp->SetupDefaultCloud();
 
@@ -444,10 +478,9 @@ int main()
     schedule.push(dataGen.get());
     schedule.push(reaper.get());
     schedule.push(g2cTransferGen.get());
-    std::unique_ptr<CHearbeat> heartbeat(new CHearbeat(rucio.get(), transferMgr.get(), 10000));
     schedule.push(heartbeat.get());
 
-    const std::uint64_t MAX_TICK = 200000;//3600 * 24 * 31;
+    const std::uint64_t MAX_TICK = 3600 * 24 * 31;
     std::uint64_t curTick = 0;
     while(curTick<MAX_TICK && !schedule.empty())
     {

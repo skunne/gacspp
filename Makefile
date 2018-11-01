@@ -1,4 +1,4 @@
 
 .PHONY: gacspp
 gacspp:
-	g++ -g -pg -Wall $(wildcard *.cpp) -o gacspp.out -lmgl-qt5 -lmgl
+	g++ -O3 -march=native -Wall $(wildcard *.cpp) -o gacspp.out -lmgl-qt5 -lmgl

@@ -76,6 +76,9 @@ public:
     auto Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_t;
     void Remove(std::uint64_t now);
 
+	bool IsComplete() const
+	{return mCurSize == mFile->GetSize();}
+
     inline auto GetFile() -> SFile*
     {return mFile;}
 	inline auto GetFile() const -> const SFile*
