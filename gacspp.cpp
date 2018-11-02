@@ -114,6 +114,7 @@ public:
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
         mRucio->RunReaper(now);
+
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + 600;
         schedule.push(this);
@@ -138,6 +139,7 @@ public:
         auto res = mCloud->ProcessBilling(now);
         std::cout<<"\tStorage: "<<res.first<<std::endl;
         std::cout<<"\tNetwork: "<<res.second<<std::endl;
+
         mNextCallTick = now + SECONDS_PER_MONTH;
         schedule.push(this);
     }
@@ -185,21 +187,27 @@ public:
         auto curRealtime = std::chrono::high_resolution_clock::now();
 		const std::uint32_t timeDiff = static_cast<std::uint32_t>(now - mLastUpdated);
         mLastUpdated = now;
-        for(std::size_t idx=0; idx<mActiveTransfers.size(); ++idx)
-        {
-            CLinkSelector* const linkSelector = mActiveTransfers[idx].mLinkSelector;
-            std::uint32_t amount = static_cast<std::uint32_t>((linkSelector->mBandwidth / static_cast<double>(linkSelector->mNumActiveTransfers)) * timeDiff);
 
-            SReplica* const dstReplica = mActiveTransfers[idx].mDstReplica;
+        std::size_t idx = 0;
+        while(idx < mActiveTransfers.size())
+        {
+            STransfer& transfer = mActiveTransfers[idx];
+
+            CLinkSelector* const linkSelector = transfer.mLinkSelector;
+            SReplica* const dstReplica = transfer.mDstReplica;
+            std::uint32_t amount = static_cast<std::uint32_t>((linkSelector->mBandwidth / static_cast<double>(linkSelector->mNumActiveTransfers)) * timeDiff);
             amount = dstReplica->Increase(amount, now);
             if(dstReplica->IsComplete())
             {
-                mActiveTransfers[idx] = std::move(mActiveTransfers.back());
-                mActiveTransfers.pop_back();
                 linkSelector->mNumActiveTransfers -= 1;
+                transfer = std::move(mActiveTransfers.back());
+                mActiveTransfers.pop_back();
+                continue; // handle same idx again
             }
             linkSelector->mUsedTraffic += amount;
+            ++idx;
         }
+
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + 30;
         schedule.push(this);
