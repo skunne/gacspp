@@ -13,7 +13,7 @@ SFile::SFile(std::uint32_t size, std::uint64_t expiresAt)
       mExpiresAt(expiresAt)
 {
     mReplicas.reserve(8);
-    mStorageElements.reserve(8);
+    //mStorageElements.reserve(8);
 }
 
 SReplica::SReplica(SFile* file, CStorageElement* storageElement, std::size_t indexAtStorageElement)
@@ -37,6 +37,8 @@ auto SReplica::Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_
 }
 void SReplica::Remove(std::uint64_t now)
 {
+    if(mTransferRef)
+        (*mTransferRef) = nullptr;
     mStorageElement->OnRemoveReplica(this, now);
 }
 
@@ -87,8 +89,8 @@ CStorageElement::CStorageElement(std::string&& name, ISite* site)
 }
 auto CStorageElement::CreateReplica(SFile* file) -> SReplica*
 {
-    const auto result = file->mStorageElements.insert(this);
-    //const auto result = mFileIds.insert(file->GetId());
+    //const auto result = file->mStorageElements.insert(this);
+    const auto result = mFileIds.insert(file->GetId());
 
     if (!result.second)
         return nullptr;
@@ -106,11 +108,11 @@ void CStorageElement::OnIncreaseReplica(std::uint64_t amount, std::uint64_t now)
 
 void CStorageElement::OnRemoveReplica(const SReplica* replica, std::uint64_t now)
 {
-    //const auto FileIdIterator = mFileIds.find(replica->GetFile()->GetId());
+    const auto FileIdIterator = mFileIds.find(replica->GetFile()->GetId());
     const std::size_t idxToDelete = replica->mIndexAtStorageElement;
     const std::uint32_t curSize = replica->GetCurSize();
 
-    //assert(FileIdIterator != mFileIds.cend());
+    assert(FileIdIterator != mFileIds.cend());
     assert(idxToDelete < mReplicas.size());
     assert(curSize <= mUsedStorage);
 
@@ -118,7 +120,7 @@ void CStorageElement::OnRemoveReplica(const SReplica* replica, std::uint64_t now
     std::size_t& idxLastReplica = lastReplica->mIndexAtStorageElement;
 
     mUsedStorage -= curSize;
-    //mFileIds.erase(FileIdIterator);
+    mFileIds.erase(FileIdIterator);
     if(idxToDelete != idxLastReplica)
     {
         idxLastReplica = idxToDelete;

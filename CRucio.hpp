@@ -39,7 +39,7 @@ private:
 
 public:
 	std::vector<SReplica*> mReplicas;
-    std::unordered_set<CStorageElement*> mStorageElements;
+    //std::unordered_set<CStorageElement*> mStorageElements;
 
     std::uint64_t mExpiresAt;
 
@@ -64,6 +64,7 @@ private:
     std::uint32_t mCurSize = 0;
 
 public:
+    SReplica** mTransferRef = nullptr;
     std::size_t mIndexAtStorageElement;
 
     SReplica(SFile* file, CStorageElement* storageElement, std::size_t indexAtStorageElement);
