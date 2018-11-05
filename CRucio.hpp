@@ -2,13 +2,13 @@
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
 
 
 
+class ISite;
 class CStorageElement;
 struct SReplica;
 
@@ -38,8 +38,7 @@ private:
     std::uint32_t mSize;
 
 public:
-	std::vector<SReplica*> mReplicas;
-    //std::unordered_set<CStorageElement*> mStorageElements;
+	std::vector<std::unique_ptr<SReplica>> mReplicas;
 
     std::uint64_t mExpiresAt;
 
@@ -68,6 +67,7 @@ public:
     std::size_t mIndexAtStorageElement;
 
     SReplica(SFile* file, CStorageElement* storageElement, std::size_t indexAtStorageElement);
+	~SReplica();
     SReplica(SReplica&&) = default;
     SReplica& operator=(SReplica&&) = default;
 
@@ -75,7 +75,6 @@ public:
     SReplica& operator=(SReplica const&) = delete;
 
     auto Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_t;
-    void Remove(std::uint64_t now);
 
 	bool IsComplete() const
 	{return mCurSize == mFile->GetSize();}
@@ -88,6 +87,39 @@ public:
     {return mStorageElement;}
     inline auto GetCurSize() const -> std::uint32_t
     {return mCurSize;}
+};
+
+class CStorageElement
+{
+private:
+    std::string mName;
+	std::unordered_set<SFile::IdType> mFileIds;
+
+protected:
+    ISite* mSite;
+    std::uint64_t mUsedStorage = 0;
+
+public:
+	std::vector<SReplica*> mReplicas;
+
+	CStorageElement(std::string&& name, ISite* site);
+    CStorageElement(CStorageElement&&) = default;
+    CStorageElement& operator=(CStorageElement&&) = default;
+
+    CStorageElement(CStorageElement const&) = delete;
+    CStorageElement& operator=(CStorageElement const&) = delete;
+
+	auto CreateReplica(SFile* file) -> SReplica*;
+
+    virtual void OnIncreaseReplica(std::uint64_t amount, std::uint64_t now);
+    virtual void OnRemoveReplica(const SReplica* replica, std::uint64_t now);
+
+    inline auto GetName() const -> const std::string&
+    {return mName;}
+    inline auto GetSite() const -> const ISite*
+    {return mSite;}
+    inline auto GetSite() -> ISite*
+    {return mSite;}
 };
 
 class ISite
@@ -135,10 +167,9 @@ public:
 
 class CGridSite : public ISite
 {
-private:
+public:
 	std::vector<std::unique_ptr<CStorageElement>> mStorageElements;
 
-public:
 	CGridSite(std::string&& name, std::string&& locationName);
 	CGridSite(CGridSite&&) = default;
 	CGridSite& operator=(CGridSite&&) = default;
@@ -147,39 +178,6 @@ public:
 	CGridSite& operator=(CGridSite const&) = delete;
 
 	auto CreateStorageElement(std::string&& name) -> CStorageElement*;
-};
-
-class CStorageElement
-{
-private:
-    std::string mName;
-	std::unordered_set<SFile::IdType> mFileIds;
-
-protected:
-    ISite* mSite;
-    std::uint64_t mUsedStorage = 0;
-
-public:
-	std::vector<std::unique_ptr<SReplica>> mReplicas;
-
-	CStorageElement(std::string&& name, ISite* site);
-    CStorageElement(CStorageElement&&) = default;
-    CStorageElement& operator=(CStorageElement&&) = default;
-
-    CStorageElement(CStorageElement const&) = delete;
-    CStorageElement& operator=(CStorageElement const&) = delete;
-
-	auto CreateReplica(SFile* file) -> SReplica*;
-
-    virtual void OnIncreaseReplica(std::uint64_t amount, std::uint64_t now);
-    virtual void OnRemoveReplica(const SReplica* replica, std::uint64_t now);
-
-    inline auto GetName() const -> const std::string&
-    {return mName;}
-    inline auto GetSite() const -> const ISite*
-    {return mSite;}
-    inline auto GetSite() -> ISite*
-    {return mSite;}
 };
 
 class CRucio

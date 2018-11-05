@@ -7,6 +7,26 @@
 
 #include "CRucio.hpp"
 
+class IBaseCloud
+{
+private:
+	std::string mName;
+
+public:
+	std::vector<std::unique_ptr<ISite>> mRegions;
+
+	IBaseCloud(std::string&& name)
+		: mName(std::move(name))
+	{}
+
+	virtual auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> ISite* = 0;
+	virtual auto ProcessBilling(std::uint64_t now) -> std::pair<double, double> = 0;
+	virtual void SetupDefaultCloud() = 0;
+
+	inline auto GetName() const -> const std::string&
+	{return mName;}
+};
+
 namespace gcp
 {
 	class CRegion;
@@ -48,58 +68,17 @@ namespace gcp
 		{return mStoragePriceCHF;}
 	};
 
-	class CCloud
+	class CCloud final : public IBaseCloud
 	{
 	public:
-		std::vector<std::unique_ptr<CRegion>> mRegions;
+		//std::vector<std::unique_ptr<CRegion>> mRegions;
 
-		auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion*;
+		CCloud(std::string&& name)
+			: IBaseCloud(std::move(name))
+		{}
 
-		auto ProcessBilling(std::uint64_t now) -> std::pair<double, double>;
-		void SetupDefaultCloud();
-
-		/*
-		def __init__(self):
-			self.region_list = []
-			self.region_by_name = {}
-
-			self.bucket_list = []
-			self.bucket_by_name  = {}
-
-			self.linkselector_list = []
-
-			self.transfer_list = []
-
-			self.multi_locations = {}
-
-		def get_as_graph(self):
-			graph = {}
-			for src_bucket in self.bucket_list:
-				src_name = src_bucket.name
-				src_region = src_bucket.site_obj
-				graph[src_name] = {}
-				for dst_bucket in self.bucket_list:
-					dst_name = dst_bucket.name
-					dst_region = dst_bucket.site_obj
-					w = 0
-					ls = src_region.linkselector_by_name.get(dst_region.name)
-					if ls != None:
-						w = ls.get_weight()
-					graph[src_name][dst_name] = w
-			return graph
-
-		def create_bucket(self, region, bucket_name, storage_type):
-			assert bucket_name not in self.bucket_by_name, bucket_name
-			if storage_type == Bucket.TYPE_MULTI:
-				region_name = region_obj.name
-				if region_name not in ['asia', 'europe', 'us']: # TODO needs better solution!
-					raise RuntimeError('create_bucket: cannot create multi regional bucket in region {}'.format(region_name))
-
-			new_bucket = region_obj.create_rse(bucket_name, storage_type)
-
-			self.bucket_list.append(new_bucket)
-			self.bucket_by_name[bucket_name] = new_bucket
-			return new_bucket
-		*/
+		auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion* final;
+		auto ProcessBilling(std::uint64_t now) -> std::pair<double, double> final;
+		void SetupDefaultCloud() final;
 	};
 }

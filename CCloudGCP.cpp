@@ -110,8 +110,10 @@ namespace gcp
 		*/
 		double totalStorageCosts = 0;
 		double totalNetworkCosts = 0;
-		for (auto& region : mRegions)
+		for (auto& site : mRegions)
 		{
+			auto region = dynamic_cast<CRegion*>(site.get());
+			assert(region != nullptr);
 			const double regionStorageCosts = region->CalculateStorageCosts(now);
 			const double regionNetworkCosts = region->CalculateNetworkCosts(now);
 			//storageCosts[bucket.GetName()] = bucketCosts;
@@ -165,8 +167,12 @@ namespace gcp
 		CreateRegion(4, "us-west1", "Oregon", 0.01978300, "E5F0-6A5D-7BAD");
 		CreateRegion(4, "us-east1", "South Carolina", 0.01978300, "E5F0-6A5D-7BAD");
 		CreateRegion(4, "us-east4", "Northern Virginia", 0.02275045, "5F7A-5173-CF5B");
-		for(auto& region : mRegions)
-			region->CreateStorageElement((region->GetName() + "_testbucket"));
+		for(auto& site : mRegions)
+		{
+			auto region = dynamic_cast<CRegion*>(site.get());
+			assert(region != nullptr);
+			region->CreateStorageElement((region->GetName() + "_default_bucket"));
+		}
 
 		//CreateRegion("us", "northamerica-northeast1", "Montreal", 0.02275045, "E466-8D73-08F4");
 		//CreateRegion("northamerica-northeast1', 'northamerica-northeast1', 'Montreal', 0.02275045, "E466-8D73-08F4")
@@ -233,13 +239,17 @@ namespace gcp
 			{ 3, { { 4,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } } } }
 		};
 
-		for (auto& srcRegion : mRegions)
+		for (auto& srcSite : mRegions)
 		{
+			auto srcRegion = dynamic_cast<CRegion*>(srcSite.get());
+			assert(srcRegion != nullptr);
 			const auto srcRegionMultiLocationIdx = srcRegion->GetMultiLocationIdx();
-			for (auto& dstRegion : mRegions)
+			for (auto& dstSite : mRegions)
 			{
+				auto dstRegion = dynamic_cast<CRegion*>(dstSite.get());
+				assert(dstRegion != nullptr);
 				const auto dstRegionMultiLocationIdx = dstRegion->GetMultiLocationIdx();
-				CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion.get(), 1<<30);
+				CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/2);
 				const bool isSameLocation = (*srcRegion) == (*dstRegion);
 				if (!isSameLocation && (srcRegionMultiLocationIdx != dstRegionMultiLocationIdx))
 				{

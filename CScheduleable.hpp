@@ -2,25 +2,31 @@
 
 #include <chrono>
 #include <cstdint>
-#include <vector>
+#include <memory>
 #include <queue>
+#include <vector>
 
-
-class CScheduleable;
-
-struct SSchedulePrioComparer
-{
-    bool operator()(const CScheduleable *left, const CScheduleable *right) const;
-};
-
-typedef std::priority_queue<CScheduleable*, std::vector<CScheduleable*>, SSchedulePrioComparer> ScheduleType;
 
 class CScheduleable
 {
 public:
+    typedef std::uint64_t TickType;
+
     std::chrono::duration<double> mUpdateDurationSummed = std::chrono::duration<double>::zero();
-    std::uint64_t mNextCallTick = 0;
+    TickType mNextCallTick;
+
+    CScheduleable(const TickType startTick=0)
+        : mNextCallTick(startTick)
+    {}
 
     virtual ~CScheduleable() = default;
-    virtual void OnUpdate(ScheduleType &schedule, std::uint64_t now) = 0;
+    virtual void OnUpdate(const TickType now) = 0;
 };
+
+struct SSchedulePrioComparer
+{
+    bool operator()(const CScheduleable *left, const CScheduleable *right) const;
+    bool operator()(const std::shared_ptr<CScheduleable>& left, const std::shared_ptr<CScheduleable>& right) const;
+};
+
+typedef std::priority_queue<std::shared_ptr<CScheduleable>, std::vector<std::shared_ptr<CScheduleable>>, SSchedulePrioComparer> ScheduleType;

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cassert>
 
+#include "IBaseSim.hpp" // for this ugly workaround
 #include "CRucio.hpp"
 
 
@@ -13,14 +14,20 @@ SFile::SFile(std::uint32_t size, std::uint64_t expiresAt)
       mExpiresAt(expiresAt)
 {
     mReplicas.reserve(8);
-    //mStorageElements.reserve(8);
 }
+
 
 SReplica::SReplica(SFile* file, CStorageElement* storageElement, std::size_t indexAtStorageElement)
     : mFile(file),
       mStorageElement(storageElement),
       mIndexAtStorageElement(indexAtStorageElement)
 {}
+SReplica::~SReplica()
+{
+    if(mTransferRef)
+        (*mTransferRef) = nullptr;
+    mStorageElement->OnRemoveReplica(this, IBaseSim::GetCurrentTick()); //this is a workaround somehow :/
+}
 auto SReplica::Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_t
 {
     const std::uint32_t maxSize = mFile->GetSize();
@@ -34,12 +41,6 @@ auto SReplica::Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_
     mCurSize = static_cast<std::uint32_t>(newSize);
     mStorageElement->OnIncreaseReplica(amount, now);
     return amount;
-}
-void SReplica::Remove(std::uint64_t now)
-{
-    if(mTransferRef)
-        (*mTransferRef) = nullptr;
-    mStorageElement->OnRemoveReplica(this, now);
 }
 
 
@@ -84,8 +85,8 @@ CStorageElement::CStorageElement(std::string&& name, ISite* site)
 	: mName(std::move(name)),
 	  mSite(site)
 {
-	//mFileIds.reserve(100000);
-	mReplicas.reserve(100000);
+	mFileIds.reserve(50000);
+	mReplicas.reserve(50000);
 }
 auto CStorageElement::CreateReplica(SFile* file) -> SReplica*
 {
@@ -96,8 +97,8 @@ auto CStorageElement::CreateReplica(SFile* file) -> SReplica*
         return nullptr;
 
     SReplica* newReplica = new SReplica(file, this, mReplicas.size());
-    mReplicas.emplace_back(newReplica);
-    file->mReplicas.push_back(newReplica);
+    file->mReplicas.emplace_back(newReplica);
+    mReplicas.push_back(newReplica);
     return newReplica;
 }
 
@@ -124,7 +125,7 @@ void CStorageElement::OnRemoveReplica(const SReplica* replica, std::uint64_t now
     if(idxToDelete != idxLastReplica)
     {
         idxLastReplica = idxToDelete;
-        mReplicas[idxToDelete] = std::move(lastReplica);
+        mReplicas[idxToDelete] = lastReplica;
     }
     mReplicas.pop_back();
 }
@@ -160,37 +161,26 @@ auto CRucio::RunReaper(std::uint64_t now) -> std::size_t
 
     while(backIdx > frontIdx && mFiles[backIdx]->mExpiresAt <= now)
     {
-        for(auto replica : mFiles[backIdx]->mReplicas)
-            replica->Remove(now);
         mFiles.pop_back();
         --backIdx;
     }
 
-    while(frontIdx < backIdx)
+    for(;frontIdx < backIdx; ++frontIdx)
     {
         if(mFiles[frontIdx]->mExpiresAt <= now)
         {
             std::swap(mFiles[frontIdx], mFiles[backIdx]);
             do
             {
-                for(auto replica : mFiles[backIdx]->mReplicas)
-                    replica->Remove(now);
                 mFiles.pop_back();
                 --backIdx;
             } while(backIdx > frontIdx && mFiles[backIdx]->mExpiresAt <= now);
         }
-        ++frontIdx;
     }
 
     if(backIdx == 0)
-    {
         if(mFiles.back()->mExpiresAt <= now)
-        {
-            for(auto replica : mFiles.back()->mReplicas)
-                replica->Remove(now);
             mFiles.pop_back();
-        }
-    }
 
     return numFiles - mFiles.size();
 }
