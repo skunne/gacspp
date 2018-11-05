@@ -401,6 +401,8 @@ public:
 
 void CSimpleSim::SetupDefaults()
 {
+    mRucio.reset(new CRucio);
+
     //proccesses
     std::vector<std::shared_ptr<CBillingGenerator>> billingGenerators;
     std::shared_ptr<CDataGenerator> dataGen(new CDataGenerator(this, 75, 0));
@@ -412,19 +414,18 @@ void CSimpleSim::SetupDefaults()
     g2cTransferGen->mTransferNumberGen->mSoftmaxScale = 15;
     g2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 600;
 
-    //std::shared_ptr<CTransferManager> c2gTransferMgr(new CTransferManager);
-    //std::shared_ptr<CTransferGenerator> c2gTransferGen(new CTransferGenerator(this c2gTransferMgr.get(), transferGenerationFreq*4));
-    //c2gTransferGen->mTransferNumberGen->mSoftmaxScale = 10;
-    //c2gTransferGen->mTransferNumberGen->mSoftmaxOffset = 50;
+    std::shared_ptr<CTransferManager> c2cTransferMgr(new CTransferManager(20, 100));
+    std::shared_ptr<CTransferGenerator> c2cTransferGen(new CTransferGenerator(this, c2cTransferMgr.get(), 100));
+    c2cTransferGen->mTransferNumberGen->mSoftmaxScale = 10;
+    c2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 50;
 
     std::shared_ptr<CHearbeat> heartbeat(new CHearbeat(this, g2cTransferMgr, 10000, 10000));
     heartbeat->mProccessDurations["DataGen"] = &(dataGen->mUpdateDurationSummed);
     heartbeat->mProccessDurations["G2CTransferUpdate"] = &(g2cTransferMgr->mUpdateDurationSummed);
     heartbeat->mProccessDurations["G2CTransferGen"] = &(g2cTransferGen->mUpdateDurationSummed);
+    heartbeat->mProccessDurations["C2CTransferUpdate"] = &(c2cTransferMgr->mUpdateDurationSummed);
+    heartbeat->mProccessDurations["C2CTransferGen"] = &(c2cTransferGen->mUpdateDurationSummed);
     heartbeat->mProccessDurations["Reaper"] = &(reaper->mUpdateDurationSummed);
-
-
-    mRucio.reset(new CRucio);
 
     CGridSite* asgc = mRucio->CreateGridSite("ASGC", "asia");
     CGridSite* cern = mRucio->CreateGridSite("CERN", "europe");
@@ -455,12 +456,14 @@ void CSimpleSim::SetupDefaults()
     g2cTransferGen->mSrcStorageElements = gridStoragleElements;
     dataGen->mStorageElements = gridStoragleElements;
 
-    //c2gTransferGen->mSrcStorageElements = g2cTransferGen->mDstStorageElements;
-    //c2gTransferGen->mDstStorageElements = g2cTransferGen->mSrcStorageElements;
+    c2cTransferGen->mSrcStorageElements = g2cTransferGen->mDstStorageElements;
+    c2cTransferGen->mDstStorageElements = g2cTransferGen->mDstStorageElements;
 
     mSchedule.push(dataGen);
     mSchedule.push(reaper);
     mSchedule.push(g2cTransferMgr);
     mSchedule.push(g2cTransferGen);
+    mSchedule.push(c2cTransferMgr);
+    mSchedule.push(c2cTransferGen);
     mSchedule.push(heartbeat);
 }

@@ -183,6 +183,10 @@ public:
 class CRucio
 {
 public:
+    ~CRucio()
+    {
+        int a;
+    }
     std::vector<std::unique_ptr<SFile>> mFiles;
     std::vector<std::unique_ptr<CGridSite>> mGridSites;
 
