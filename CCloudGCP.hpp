@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -38,6 +39,9 @@ namespace gcp
 		std::vector<std::pair<std::uint64_t, std::int64_t>> mBucketEvents;
 
 	public:
+		std::uint32_t mLogId;
+		std::ofstream *mStorageLog;
+
 		CBucket(std::string&& name, CRegion* region);
 		CBucket(CBucket&&) = default;
 		virtual void OnIncreaseReplica(std::uint64_t amount, std::uint64_t now) final;
@@ -70,6 +74,9 @@ namespace gcp
 
 	class CCloud final : public IBaseCloud
 	{
+	private:
+		std::ofstream mStorageLog;
+
 	public:
 		//std::vector<std::unique_ptr<CRegion>> mRegions;
 

@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-
+#include "IBaseSim.hpp"
 
 class ISite;
 class CStorageElement;
@@ -17,7 +17,7 @@ class CLinkSelector
 public:
 	typedef std::vector<std::pair<std::uint64_t, double>> PriceInfoType;
 
-	CLinkSelector(std::uint32_t bandwidth)
+	CLinkSelector(const std::uint32_t bandwidth)
 		: mBandwidth(bandwidth)
 	{}
     PriceInfoType mNetworkPrice = {{0,0}};
@@ -40,14 +40,16 @@ private:
 public:
 	std::vector<std::unique_ptr<SReplica>> mReplicas;
 
-    std::uint64_t mExpiresAt;
+    IBaseSim::TickType mExpiresAt;
 
-    SFile(std::uint32_t size, std::uint64_t expiresAt);
+    SFile(const std::uint32_t size, const IBaseSim::TickType expiresAt);
     SFile(SFile&&) = default;
     SFile& operator=(SFile&&) = default;
 
     SFile(SFile const&) = delete;
     SFile& operator=(SFile const&) = delete;
+
+	void Remove(const IBaseSim::TickType now);
 
     inline auto GetId() const -> IdType
     {return mId;}
@@ -66,15 +68,16 @@ public:
     SReplica** mTransferRef = nullptr;
     std::size_t mIndexAtStorageElement;
 
-    SReplica(SFile* file, CStorageElement* storageElement, std::size_t indexAtStorageElement);
-	~SReplica();
+    SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement);
+
     SReplica(SReplica&&) = default;
     SReplica& operator=(SReplica&&) = default;
 
     SReplica(SReplica const&) = delete;
     SReplica& operator=(SReplica const&) = delete;
 
-    auto Increase(std::uint32_t amount, std::uint64_t now) -> std::uint32_t;
+    auto Increase(std::uint32_t amount, const IBaseSim::TickType now) -> std::uint32_t;
+	void Remove(const IBaseSim::TickType now);
 
 	bool IsComplete() const
 	{return mCurSize == mFile->GetSize();}
@@ -102,7 +105,7 @@ protected:
 public:
 	std::vector<SReplica*> mReplicas;
 
-	CStorageElement(std::string&& name, ISite* site);
+	CStorageElement(std::string&& name, ISite* const site);
     CStorageElement(CStorageElement&&) = default;
     CStorageElement& operator=(CStorageElement&&) = default;
 
@@ -111,8 +114,8 @@ public:
 
 	auto CreateReplica(SFile* file) -> SReplica*;
 
-    virtual void OnIncreaseReplica(std::uint64_t amount, std::uint64_t now);
-    virtual void OnRemoveReplica(const SReplica* replica, std::uint64_t now);
+    virtual void OnIncreaseReplica(const std::uint64_t amount, const IBaseSim::TickType now);
+    virtual void OnRemoveReplica(const SReplica* replica, const IBaseSim::TickType now);
 
     inline auto GetName() const -> const std::string&
     {return mName;}
@@ -152,10 +155,10 @@ public:
 	inline bool operator!=(const ISite& b) const
 	{return mId != b.mId;}
 
-	virtual auto CreateLinkSelector(const ISite* dstSite, std::uint32_t bandwidth) -> CLinkSelector*;
+	virtual auto CreateLinkSelector(const ISite* const dstSite, const std::uint32_t bandwidth) -> CLinkSelector*;
     virtual auto CreateStorageElement(std::string&& name) -> CStorageElement* = 0;
 
-	auto GetLinkSelector(const ISite* dstSite) -> CLinkSelector*;
+	auto GetLinkSelector(const ISite* const dstSite) -> CLinkSelector*;
 
 	inline auto GetId() const -> IdType
 	{return mId;}
@@ -183,15 +186,11 @@ public:
 class CRucio
 {
 public:
-    ~CRucio()
-    {
-        int a;
-    }
     std::vector<std::unique_ptr<SFile>> mFiles;
     std::vector<std::unique_ptr<CGridSite>> mGridSites;
 
     CRucio();
-    auto CreateFile(std::uint32_t size, std::uint64_t expiresAt) -> SFile*;
+    auto CreateFile(const std::uint32_t size, const IBaseSim::TickType expiresAt) -> SFile*;
     auto CreateGridSite(std::string&& name, std::string&& locationName) -> CGridSite*;
-    auto RunReaper(std::uint64_t now) -> std::size_t;
+    auto RunReaper(const IBaseSim::TickType now) -> std::size_t;
 };

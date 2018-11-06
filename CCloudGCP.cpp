@@ -35,6 +35,7 @@ namespace gcp
 		for (const auto &storageEvent : mBucketEvents)
 		{
 			assert(storageEvent.first >= timeOffset);
+			(*mStorageLog) <<mLogId<<'|'<<storageEvent.first<<'|'<<(storageEvent.second/1024.0)<<'|';
 			const double timeDiff = storageEvent.first - timeOffset;
 			if (timeDiff > 0)
 			{
@@ -167,12 +168,21 @@ namespace gcp
 		CreateRegion(4, "us-west1", "Oregon", 0.01978300, "E5F0-6A5D-7BAD");
 		CreateRegion(4, "us-east1", "South Carolina", 0.01978300, "E5F0-6A5D-7BAD");
 		CreateRegion(4, "us-east4", "Northern Virginia", 0.02275045, "5F7A-5173-CF5B");
+
+		mStorageLog.open(GetName() + "_storage.dat");
+		std::uint32_t id = 0;
 		for(auto& site : mRegions)
 		{
 			auto region = dynamic_cast<CRegion*>(site.get());
 			assert(region != nullptr);
-			region->CreateStorageElement((region->GetName() + "_default_bucket"));
+			auto bucket = region->CreateStorageElement((region->GetName() + "_default_bucket"));
+
+			//logging
+			bucket->mStorageLog = &mStorageLog;
+			bucket->mLogId = id++;
+			mStorageLog<<bucket->mLogId<<":"<<bucket->GetName()<<std::endl;
 		}
+		mStorageLog<<"body"<<std::endl;
 
 		//CreateRegion("us", "northamerica-northeast1", "Montreal", 0.02275045, "E466-8D73-08F4");
 		//CreateRegion("northamerica-northeast1', 'northamerica-northeast1', 'Montreal', 0.02275045, "E466-8D73-08F4")
@@ -292,5 +302,6 @@ namespace gcp
 		//download australia 9B2D-2B7D-FA5C 0.1775835 0.1775835 0.1682370 0.1401975
 		//download china     4980-950B-BDA6 0.2149695 0.2149695 0.2056230 0.1869300
 		//download us emea   22EB-AAE8-FBCD 0.0000000 0.1121580 0.1028115 0.0747720
+
 	}
 }
