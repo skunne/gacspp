@@ -21,7 +21,7 @@ public:
 	{}
 
 	virtual auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> ISite* = 0;
-	virtual auto ProcessBilling(std::uint64_t now) -> std::pair<double, double> = 0;
+	virtual auto ProcessBilling(std::uint64_t now) -> std::pair<double, std::pair<double, double>> = 0;
 	virtual void SetupDefaultCloud() = 0;
 
 	inline auto GetName() const -> const std::string&
@@ -58,13 +58,14 @@ namespace gcp
 		double mStoragePriceCHF;
 
 	public:
+        std::ofstream *mNetworkLog;
 		std::vector<std::unique_ptr<CBucket>> mStorageElements;
 
 		CRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId);
 
 		auto CreateStorageElement(std::string&& name) -> CBucket* final;
 		double CalculateStorageCosts(std::uint64_t now);
-		double CalculateNetworkCosts(std::uint64_t now);
+		double CalculateNetworkCosts(std::uint64_t now, double& sumUsedTraffic);
 
 		inline auto GetMultiLocationIdx() const -> std::uint32_t
 		{return mMultiLocationIdx;}
@@ -76,6 +77,7 @@ namespace gcp
 	{
 	private:
 		std::ofstream mStorageLog;
+        std::ofstream mNetworkLog;
 
 	public:
 		//std::vector<std::unique_ptr<CRegion>> mRegions;
@@ -85,7 +87,7 @@ namespace gcp
 		{}
 
 		auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion* final;
-		auto ProcessBilling(std::uint64_t now) -> std::pair<double, double> final;
+		auto ProcessBilling(std::uint64_t now) -> std::pair<double, std::pair<double, double>> final;
 		void SetupDefaultCloud() final;
 	};
 }

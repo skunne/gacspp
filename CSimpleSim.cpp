@@ -13,6 +13,7 @@
 #include "CScheduleable.hpp"
 #include "CSimpleSim.hpp"
 
+#include <fstream>
 
 class CDataGenerator : public CScheduleable
 {
@@ -140,8 +141,10 @@ public:
     {
         std::cout<<mCloud->GetName()<<" - Billing for Month "<<(now/SECONDS_PER_MONTH)<<":\n";
         auto res = mCloud->ProcessBilling(now);
-        std::cout<<"\tStorage: "<<res.first<<std::endl;
-        std::cout<<"\tNetwork: "<<res.second<<std::endl;
+        std::cout << "\tStorage: " << res.first << " CHF" << std::endl;
+        std::cout << "\tNetwork: " << res.second.first << " CHF" << std::endl;
+        std::cout << "\tNetwork: " << res.second.second << " GiB" << std::endl;
+        std::cout << std::endl;
 
         mNextCallTick = now + mTickFreq;
     }
@@ -181,11 +184,13 @@ private:
     std::vector<STransfer> mActiveTransfers;
 
 public:
+    std::ofstream mTransferLog;
     std::uint32_t mNumCompletedTransfers = 0;
     std::uint64_t mSummedTransferDuration = 0;
-    CTransferManager(const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
+    CTransferManager(const std::string& logFilePath, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
         : CScheduleable(startTick),
-          mTickFreq(tickFreq)
+          mTickFreq(tickFreq),
+          mTransferLog(logFilePath)
     {
         mActiveTransfers.reserve(1024);
     }
@@ -207,6 +212,7 @@ public:
     void OnUpdate(const CScheduleable::TickType now) final
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
+        mTransferLog << 0 << "|" << now << "|" << mActiveTransfers.size() << "|";
 		const std::uint32_t timeDiff = static_cast<std::uint32_t>(now - mLastUpdated);
         mLastUpdated = now;
 
@@ -215,13 +221,14 @@ public:
         {
             auto& transfer = mActiveTransfers[idx];
             SReplica* const dstReplica = transfer.mDstReplica;
+            CLinkSelector* const linkSelector = transfer.mLinkSelector;
             if (dstReplica == nullptr)
             {
+                ++linkSelector->mFailedTransfers;
                 DeleteTransferUnordered(idx);
                 continue; // handle same idx again
             }
 
-            CLinkSelector* const linkSelector = transfer.mLinkSelector;
             const double sharedBandwidth = linkSelector->mBandwidth / static_cast<double>(linkSelector->mNumActiveTransfers);
             std::uint32_t amount = static_cast<std::uint32_t>(sharedBandwidth * timeDiff);
             amount = dstReplica->Increase(amount, now);
@@ -229,6 +236,7 @@ public:
 
             if(dstReplica->IsComplete())
             {
+                ++linkSelector->mDoneTransfers;
                 ++mNumCompletedTransfers;
                 mSummedTransferDuration += now - transfer.mStartTick;
                 transfer.mDstReplica->mTransferRef = nullptr;
@@ -279,6 +287,7 @@ private:
     std::uint32_t mTickFreq;
 
 public:
+    std::ofstream* mTransferLog;
     std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
     std::vector<CStorageElement*> mSrcStorageElements;
     std::vector<CStorageElement*> mDstStorageElements;
@@ -329,7 +338,7 @@ public:
         }
 
         //std::cout<<"["<<now<<"]\nnumActive: "<<numActive<<"\nnumToCreate: "<<numToCreate<<"\ntotalCreated: "<<totalTransfersCreated<<std::endl;
-
+        mTransferMgr->mTransferLog << 1 << "|" << now << "|" << numToCreate << "|";
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mTickFreq;
     }
@@ -340,6 +349,7 @@ class CHearbeat : public CScheduleable
 private:
     IBaseSim* mSim;
     std::shared_ptr<CTransferManager> mG2CTransferMgr;
+    std::shared_ptr<CTransferManager> mC2CTransferMgr;
     std::uint32_t mTickFreq;
 
     std::chrono::high_resolution_clock::time_point mTimeLastUpdate;
@@ -347,10 +357,11 @@ private:
 public:
     std::unordered_map<std::string, std::chrono::duration<double>*> mProccessDurations;
 
-    CHearbeat(IBaseSim* sim, std::shared_ptr<CTransferManager> g2cTransferMgr, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
+    CHearbeat(IBaseSim* sim, std::shared_ptr<CTransferManager> g2cTransferMgr, std::shared_ptr<CTransferManager> c2cTransferMgr, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
         : CScheduleable(startTick),
           mSim(sim),
           mG2CTransferMgr(g2cTransferMgr),
+          mC2CTransferMgr(c2cTransferMgr),
           mTickFreq(tickFreq)
     {
         mTimeLastUpdate = std::chrono::high_resolution_clock::now();
@@ -367,17 +378,23 @@ public:
         std::stringstream statusOutput;
         statusOutput << std::fixed << std::setprecision(2);
 
-        std::shared_ptr<CTransferManager> mC2GTransferMgr = mG2CTransferMgr;
         statusOutput << "[" << std::setw(6) << static_cast<std::uint32_t>(now / 1000) << "k]: ";
         statusOutput << "Runtime: " << mUpdateDurationSummed.count() << "s; ";
         statusOutput << "numFiles: " << mSim->mRucio->mFiles.size() / 1000.0 << "k; ";
-        statusOutput << "activeTransfers: " << mG2CTransferMgr->GetNumActiveTransfers() << " + " << mC2GTransferMgr->GetNumActiveTransfers() << "; ";
-        statusOutput << "CompletedTransfers: " << mG2CTransferMgr->mNumCompletedTransfers << " + " << mC2GTransferMgr->mNumCompletedTransfers << "; ";
-        statusOutput << "AvgTransferDuration: " << (mG2CTransferMgr->mSummedTransferDuration / mC2GTransferMgr->mNumCompletedTransfers) << "s\n";
+
+        statusOutput << "activeTransfers: " << mG2CTransferMgr->GetNumActiveTransfers();
+        statusOutput << " + " << mC2CTransferMgr->GetNumActiveTransfers() << "; ";
+
+        statusOutput << "CompletedTransfers: " << mG2CTransferMgr->mNumCompletedTransfers;
+        statusOutput << " + " << mC2CTransferMgr->mNumCompletedTransfers << "; ";
+
+        statusOutput << "AvgTransferDuration: " << (mG2CTransferMgr->mSummedTransferDuration / mG2CTransferMgr->mNumCompletedTransfers);
+        statusOutput << " + " << (mC2CTransferMgr->mSummedTransferDuration / mC2CTransferMgr->mNumCompletedTransfers) << "s\n";
+
         mG2CTransferMgr->mNumCompletedTransfers = 0;
         mG2CTransferMgr->mSummedTransferDuration = 0;
-        mC2GTransferMgr->mNumCompletedTransfers = 0;
-        mC2GTransferMgr->mSummedTransferDuration = 0;
+        mC2CTransferMgr->mNumCompletedTransfers = 0;
+        mC2CTransferMgr->mSummedTransferDuration = 0;
 
 		std::size_t maxW = 0;
 		for (auto it : mProccessDurations)
@@ -409,17 +426,17 @@ void CSimpleSim::SetupDefaults()
     std::shared_ptr<CReaper> reaper(new CReaper(mRucio.get(), 600, 600));
 
 
-    std::shared_ptr<CTransferManager> g2cTransferMgr(new CTransferManager(20, 100));
+    std::shared_ptr<CTransferManager> g2cTransferMgr(new CTransferManager("g2c_transfers.dat", 20, 100));
     std::shared_ptr<CTransferGenerator> g2cTransferGen(new CTransferGenerator(this, g2cTransferMgr.get(), 50));
     g2cTransferGen->mTransferNumberGen->mSoftmaxScale = 15;
     g2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 600;
 
-    std::shared_ptr<CTransferManager> c2cTransferMgr(new CTransferManager(20, 100));
+    std::shared_ptr<CTransferManager> c2cTransferMgr(new CTransferManager("c2c_transfers.dat", 20, 100));
     std::shared_ptr<CTransferGenerator> c2cTransferGen(new CTransferGenerator(this, c2cTransferMgr.get(), 100));
     c2cTransferGen->mTransferNumberGen->mSoftmaxScale = 10;
     c2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 50;
 
-    std::shared_ptr<CHearbeat> heartbeat(new CHearbeat(this, g2cTransferMgr, 10000, 10000));
+    std::shared_ptr<CHearbeat> heartbeat(new CHearbeat(this, g2cTransferMgr, c2cTransferMgr, 10000, 10000));
     heartbeat->mProccessDurations["DataGen"] = &(dataGen->mUpdateDurationSummed);
     heartbeat->mProccessDurations["G2CTransferUpdate"] = &(g2cTransferMgr->mUpdateDurationSummed);
     heartbeat->mProccessDurations["G2CTransferGen"] = &(g2cTransferGen->mUpdateDurationSummed);
@@ -445,8 +462,8 @@ void CSimpleSim::SetupDefaults()
             for(auto& cloudSite : cloud->mRegions)
             {
                 auto region = dynamic_cast<gcp::CRegion*>(cloudSite.get());
-                gridSite->CreateLinkSelector(region, ONE_GiB / 256);
-                region->CreateLinkSelector(gridSite.get(), ONE_GiB / 256);
+                gridSite->CreateLinkSelector(region, ONE_GiB / 128);
+                region->CreateLinkSelector(gridSite.get(), ONE_GiB / 128);
                 for (auto& bucket : region->mStorageElements)
                     g2cTransferGen->mDstStorageElements.push_back(bucket.get());
             }

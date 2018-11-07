@@ -1,4 +1,5 @@
 #include <cassert>
+#include <iomanip>
 #include <unordered_map>
 
 #include "constants.h"
@@ -35,7 +36,6 @@ namespace gcp
 		for (const auto &storageEvent : mBucketEvents)
 		{
 			assert(storageEvent.first >= timeOffset);
-			(*mStorageLog) <<mLogId<<'|'<<storageEvent.first<<'|'<<(storageEvent.second/1024.0)<<'|';
 			const double timeDiff = storageEvent.first - timeOffset;
 			if (timeDiff > 0)
 			{
@@ -43,6 +43,7 @@ namespace gcp
 				const double costsOfTimeDiff = storageGiB * price * SECONDS_TO_MONTHS(timeDiff);
 				costs += costsOfTimeDiff;
 				timeOffset = storageEvent.first;
+                (*mStorageLog) << mLogId << '|' << storageEvent.first << '|' << (usedStorageAtGivenTime / ONE_GiB) << '|';
 			}
 			usedStorageAtGivenTime += storageEvent.second;
 		}
@@ -84,13 +85,26 @@ namespace gcp
 			regionStorageCosts += bucket->CalculateStorageCosts(now);
 		return regionStorageCosts;
 	}
-	double CRegion::CalculateNetworkCosts(std::uint64_t now)
+	double CRegion::CalculateNetworkCosts(std::uint64_t now, double& sumUsedTraffic)
 	{
 		double regionNetworkCosts = 0;
+        sumUsedTraffic = 0;
 		for (auto& linkSelector : mLinkSelectors)
 		{
-			regionNetworkCosts += CalculateNetworkCostsRecursive(linkSelector->mUsedTraffic, linkSelector->mNetworkPrice.cbegin(), linkSelector->mNetworkPrice.cend());
+            double costs = CalculateNetworkCostsRecursive(linkSelector->mUsedTraffic, linkSelector->mNetworkPrice.cbegin(), linkSelector->mNetworkPrice.cend());
+
+            *(mNetworkLog) << "### " << linkSelector->mSrcSiteName << " --> " << linkSelector->mDstSiteName << " ###" << std::endl;
+            *(mNetworkLog) << "NumTransfersDone: " << linkSelector->mDoneTransfers << std::endl;
+            *(mNetworkLog) << "NumTransfersFail: " << linkSelector->mFailedTransfers << std::endl;
+            *(mNetworkLog) << "Transferred:      " << (linkSelector->mUsedTraffic / ONE_GiB) << " GiB" << std::endl;
+            *(mNetworkLog) << "Costs:            " << costs << " CHF" << std::endl;
+            *(mNetworkLog) << std::endl;
+
+            regionNetworkCosts += costs;
+            sumUsedTraffic += (linkSelector->mUsedTraffic / ONE_GiB);
 			linkSelector->mUsedTraffic = 0;
+            linkSelector->mDoneTransfers = 0;
+            linkSelector->mFailedTransfers = 0;
 		}
 		return regionNetworkCosts;
 	}
@@ -103,7 +117,7 @@ namespace gcp
 
 
 
-	auto CCloud::ProcessBilling(std::uint64_t now) -> std::pair<double, double>
+	auto CCloud::ProcessBilling(std::uint64_t now) -> std::pair<double, std::pair<double, double>>
 	{
 		/*
 		for transfer in self.transfer_list:
@@ -111,17 +125,18 @@ namespace gcp
 		*/
 		double totalStorageCosts = 0;
 		double totalNetworkCosts = 0;
+        double sumUsedTraffic;
 		for (auto& site : mRegions)
 		{
 			auto region = dynamic_cast<CRegion*>(site.get());
 			assert(region != nullptr);
 			const double regionStorageCosts = region->CalculateStorageCosts(now);
-			const double regionNetworkCosts = region->CalculateNetworkCosts(now);
+			const double regionNetworkCosts = region->CalculateNetworkCosts(now, sumUsedTraffic);
 			//storageCosts[bucket.GetName()] = bucketCosts;
 			totalStorageCosts += regionStorageCosts;
 			totalNetworkCosts += regionNetworkCosts;
 		}
-		return std::make_pair(totalStorageCosts, totalNetworkCosts);
+        return { totalStorageCosts, {totalNetworkCosts, sumUsedTraffic } };
 	}
 	void CCloud::SetupDefaultCloud()
 	{
@@ -249,9 +264,12 @@ namespace gcp
 			{ 3, { { 4,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } } } }
 		};
 
+        mNetworkLog.open(GetName() + "_network.dat");
+        mNetworkLog << std::fixed << std::setprecision(2);
 		for (auto& srcSite : mRegions)
 		{
 			auto srcRegion = dynamic_cast<CRegion*>(srcSite.get());
+            srcRegion->mNetworkLog = &mNetworkLog;
 			assert(srcRegion != nullptr);
 			const auto srcRegionMultiLocationIdx = srcRegion->GetMultiLocationIdx();
 			for (auto& dstSite : mRegions)
@@ -259,7 +277,7 @@ namespace gcp
 				auto dstRegion = dynamic_cast<CRegion*>(dstSite.get());
 				assert(dstRegion != nullptr);
 				const auto dstRegionMultiLocationIdx = dstRegion->GetMultiLocationIdx();
-				CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/2);
+				CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/512);
 				const bool isSameLocation = (*srcRegion) == (*dstRegion);
 				if (!isSameLocation && (srcRegionMultiLocationIdx != dstRegionMultiLocationIdx))
 				{

@@ -59,6 +59,8 @@ auto ISite::CreateLinkSelector(const ISite* const dstSite, const std::uint32_t b
     auto result = mDstSiteIdToLinkSelectorIdx.insert({dstSite->mId, mLinkSelectors.size()});
     assert(result.second);
     CLinkSelector* newLinkSelector = new CLinkSelector(bandwidth);
+    newLinkSelector->mSrcSiteName = mName;
+    newLinkSelector->mDstSiteName = dstSite->mName;
     mLinkSelectors.emplace_back(newLinkSelector);
     return newLinkSelector;
 }

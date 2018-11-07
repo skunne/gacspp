@@ -4,6 +4,7 @@
 
 #define PI (3.14159265359)
 
+#define ONE_MiB (1048576.0) //2^20
 #define ONE_GiB (1073741824.0) // 2^30
 #define BYTES_TO_GiB(x) ((x) / ONE_GiB)
 #define GiB_TO_BYTES(x) ((x) * ONE_GiB)

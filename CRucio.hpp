@@ -15,6 +15,13 @@ struct SReplica;
 class CLinkSelector
 {
 public:
+    //monitoring
+    std::string mSrcSiteName;
+    std::string mDstSiteName;
+    std::uint32_t mDoneTransfers = 0;
+    std::uint32_t mFailedTransfers = 0;
+
+public:
 	typedef std::vector<std::pair<std::uint64_t, double>> PriceInfoType;
 
 	CLinkSelector(const std::uint32_t bandwidth)
@@ -22,8 +29,8 @@ public:
 	{}
     PriceInfoType mNetworkPrice = {{0,0}};
     std::uint64_t mUsedTraffic = 0;
-	std::uint32_t mNumActiveTransfers = 0;
-	std::uint32_t mBandwidth;
+    std::uint32_t mNumActiveTransfers = 0;
+    std::uint32_t mBandwidth;
 };
 
 struct SFile
