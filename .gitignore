@@ -33,6 +33,7 @@
 
 # data
 *.png
+*.dat
 
 # Windows specific
 .vs

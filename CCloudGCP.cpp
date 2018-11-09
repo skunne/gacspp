@@ -277,7 +277,7 @@ namespace gcp
 				auto dstRegion = dynamic_cast<CRegion*>(dstSite.get());
 				assert(dstRegion != nullptr);
 				const auto dstRegionMultiLocationIdx = dstRegion->GetMultiLocationIdx();
-				CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/512);
+				CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/64);
 				const bool isSameLocation = (*srcRegion) == (*dstRegion);
 				if (!isSameLocation && (srcRegionMultiLocationIdx != dstRegionMultiLocationIdx))
 				{

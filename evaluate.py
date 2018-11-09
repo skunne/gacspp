@@ -31,7 +31,7 @@ def PlotBilling(filePath):
 			bucketsById[items[0]] = {'name': items[1], 'x': [], 'y': []}
 		data = infile.read().split('|')
 		print('numEvents={}'.format(len(data)))
-		for idx in range(0, len(data)-1, 3):
+		for idx in range(0, len(data)-10, 3):
 			bucket = bucketsById[data[idx]]
 			bucket['x'].append( int(data[idx+1])/1000 )
 			bucket['y'].append( float(data[idx+2]) )
@@ -44,12 +44,12 @@ def PlotBilling(filePath):
 	plt.xlabel('Sim Time/1000')
 
 plt.figure(1)
-PlotTransferMgr("C:\\Users\\wegne\\source\\repos\\gacspp\\g2c_transfers.dat")
-#plt.figure(2)
-#PlotTransferMgr("C:\\Users\\wegne\\source\\repos\\gacspp\\c2c_transfers.dat")
+PlotTransferMgr("g2c_transfers.dat")
+plt.figure(2)
+PlotTransferMgr("c2c_transfers.dat")
 
-#plt.figure(2)
-#PlotBilling("C:\\Users\\wegne\\source\\repos\\gacspp\\GCP_storage.dat")
+plt.figure(3)
+PlotBilling("GCP_storage.dat")
 plt.axis(xmin=0, ymin=0)
 plt.legend()
 

@@ -192,7 +192,7 @@ public:
           mTickFreq(tickFreq),
           mTransferLog(logFilePath)
     {
-        mActiveTransfers.reserve(1024);
+        mActiveTransfers.reserve(2048);
     }
 
     void CreateTransfer(CLinkSelector* const linkSelector, SReplica* const dstReplica, const CScheduleable::TickType now)
@@ -279,7 +279,7 @@ public:
     }
 };
 
-class CTransferGenerator : public CScheduleable
+class CTransferGeneratorUniform : public CScheduleable
 {
 private:
     IBaseSim* mSim;
@@ -292,7 +292,7 @@ public:
     std::vector<CStorageElement*> mSrcStorageElements;
     std::vector<CStorageElement*> mDstStorageElements;
 
-    CTransferGenerator(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
+    CTransferGeneratorUniform(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
         : CScheduleable(startTick),
           mSim(sim),
           mTransferMgr(transferMgr),
@@ -304,25 +304,27 @@ public:
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
         assert(mSrcStorageElements.size() > 0);
+        IBaseSim::RNGEngineType& rngEngine = mSim->mRNGEngine;
         const std::uint32_t numActive = static_cast<std::uint32_t>(mTransferMgr->GetNumActiveTransfers());
-        const std::uint32_t numToCreate = mTransferNumberGen->GetNumToCreate(mSim->mRNGEngine, numActive, now);
-        const std::uint32_t numToCreatePerRSE = 1 + static_cast<std::uint32_t>( numToCreate/static_cast<double>(mSrcStorageElements.size()) );
+        const std::uint32_t numToCreate = mTransferNumberGen->GetNumToCreate(rngEngine, numActive, now);
+        const std::uint32_t numToCreatePerRSE = static_cast<std::uint32_t>( numToCreate/static_cast<double>(mSrcStorageElements.size()) );
         std::uint32_t totalTransfersCreated = 0;
+        //std::cout<<"["<<now<<"]\nnumActive: "<<numActive<<"\nnumToCreate: "<<numToCreate<<"\ntotalCreated: "<<numToCreatePerRSE<<std::endl;
         std::uniform_int_distribution<std::size_t> dstStorageElementRndChooser(0, mDstStorageElements.size()-1);
         for(auto& srcStorageElement : mSrcStorageElements)
         {
             std::uint32_t numCreated = 0;
             std::size_t numSrcReplicas = srcStorageElement->mReplicas.size();
             std::uniform_int_distribution<std::size_t> rngSampler(0, numSrcReplicas);
-            while(numSrcReplicas > 0 && numCreated <= numToCreatePerRSE)
+            while(numSrcReplicas > 0 && numCreated < numToCreatePerRSE)
             {
-                const std::size_t idx = rngSampler(mSim->mRNGEngine) % numSrcReplicas;
+                const std::size_t idx = rngSampler(rngEngine) % numSrcReplicas;
                 --numSrcReplicas;
 
                 auto& curReplica = srcStorageElement->mReplicas[idx];
                 if(curReplica->IsComplete())
                 {
-                    CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(mSim->mRNGEngine)];
+                    CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(rngEngine)];
                     SReplica* const newReplica = dstStorageElement->CreateReplica(curReplica->GetFile());
                     if(newReplica != nullptr)
                     {
@@ -337,13 +339,86 @@ public:
             totalTransfersCreated += numCreated;
         }
 
-        //std::cout<<"["<<now<<"]\nnumActive: "<<numActive<<"\nnumToCreate: "<<numToCreate<<"\ntotalCreated: "<<totalTransfersCreated<<std::endl;
         mTransferMgr->mTransferLog << 1 << "|" << now << "|" << numToCreate << "|";
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mTickFreq;
     }
 };
+class CTransferGeneratorExponential : public CScheduleable
+{
+private:
+    IBaseSim* mSim;
+    CTransferManager* mTransferMgr;
+    std::uint32_t mTickFreq;
 
+public:
+    std::ofstream* mTransferLog;
+    std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
+    std::vector<CStorageElement*> mSrcStorageElements;
+    std::vector<CStorageElement*> mDstStorageElements;
+
+    CTransferGeneratorExponential(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
+        : CScheduleable(startTick),
+          mSim(sim),
+          mTransferMgr(transferMgr),
+          mTickFreq(tickFreq),
+          mTransferNumberGen(new CTransferNumberGenerator(1, 1, tickFreq, 0.075))
+    {}
+
+    void OnUpdate(const CScheduleable::TickType now) final
+    {
+        auto curRealtime = std::chrono::high_resolution_clock::now();
+
+        const std::size_t numSrcStorageElements = mSrcStorageElements.size();
+        assert(numSrcStorageElements > 0);
+
+        IBaseSim::RNGEngineType& rngEngine = mSim->mRNGEngine;
+
+        const std::uint32_t numActive = static_cast<std::uint32_t>(mTransferMgr->GetNumActiveTransfers());
+        const std::uint32_t numToCreate = mTransferNumberGen->GetNumToCreate(rngEngine, numActive, now);
+
+        // mean=1/lambda; mean=numToCreate/numRSEs; => lambda = 1 * numRSEs / numToCreate
+        std::exponential_distribution<double> perRSENumberGen(mDstStorageElements.size() / double(numToCreate));
+
+        std::uint32_t totalTransfersCreated = 0;
+        //std::cout<<"["<<now<<"]\nnumActive: "<<numActive<<"\nnumToCreate: "<<numToCreate<<"\ntotalCreated: "<<totalTransfersCreated<<std::endl;
+        for(auto& dstStorageElement : mDstStorageElements)
+        {
+            std::uint32_t numCreatedPerRSE = 0;
+            const std::uint32_t numToCreatePerRSE = std::uint32_t(perRSENumberGen(rngEngine));
+            std::size_t numSrcStorageElementsTried = 0;
+            while(numCreatedPerRSE < numToCreatePerRSE && numSrcStorageElementsTried < numSrcStorageElements)
+            {
+                std::uniform_int_distribution<std::size_t> srcStorageElementRndChooser(0, numSrcStorageElements - (++numSrcStorageElementsTried));
+                auto& srcStorageElement = mSrcStorageElements[srcStorageElementRndChooser(rngEngine)];
+                std::size_t numSrcReplicas = srcStorageElement->mReplicas.size();
+                std::uniform_int_distribution<std::size_t> rngSampler(0, numSrcReplicas);
+                while(numCreatedPerRSE < numToCreatePerRSE && numSrcReplicas > 0)
+                {
+                    auto& curReplica = srcStorageElement->mReplicas[rngSampler(rngEngine) % numSrcReplicas];
+                    if(curReplica->IsComplete())
+                    {
+                        SReplica* const newReplica = dstStorageElement->CreateReplica(curReplica->GetFile());
+                        if(newReplica != nullptr)
+                        {
+                            mTransferMgr->CreateTransfer(srcStorageElement, newReplica, now);
+                            ++numCreatedPerRSE;
+                        }
+                    }
+                    --numSrcReplicas;
+                    auto& lastReplica = srcStorageElement->mReplicas[numSrcReplicas];
+                    std::swap(curReplica->mIndexAtStorageElement, lastReplica->mIndexAtStorageElement);
+                    std::swap(curReplica, lastReplica);
+                }
+            }
+            totalTransfersCreated += numCreatedPerRSE;
+        }
+
+        mTransferMgr->mTransferLog << 1 << "|" << now << "|" << numToCreate << "|";
+        mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
+        mNextCallTick = now + mTickFreq;
+    }
+};
 class CHearbeat : public CScheduleable
 {
 private:
@@ -389,7 +464,7 @@ public:
         statusOutput << " + " << mC2CTransferMgr->mNumCompletedTransfers << "; ";
 
         statusOutput << "AvgTransferDuration: " << (mG2CTransferMgr->mSummedTransferDuration / mG2CTransferMgr->mNumCompletedTransfers);
-        statusOutput << " + " << (mC2CTransferMgr->mSummedTransferDuration / mC2CTransferMgr->mNumCompletedTransfers) << "s\n";
+        statusOutput << " + " << (mC2CTransferMgr->mSummedTransferDuration / mC2CTransferMgr->mNumCompletedTransfers) << std::endl;
 
         mG2CTransferMgr->mNumCompletedTransfers = 0;
         mG2CTransferMgr->mSummedTransferDuration = 0;
@@ -427,12 +502,12 @@ void CSimpleSim::SetupDefaults()
 
 
     std::shared_ptr<CTransferManager> g2cTransferMgr(new CTransferManager("g2c_transfers.dat", 20, 100));
-    std::shared_ptr<CTransferGenerator> g2cTransferGen(new CTransferGenerator(this, g2cTransferMgr.get(), 50));
+    std::shared_ptr<CTransferGeneratorExponential> g2cTransferGen(new CTransferGeneratorExponential(this, g2cTransferMgr.get(), 25));
     g2cTransferGen->mTransferNumberGen->mSoftmaxScale = 15;
     g2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 600;
 
     std::shared_ptr<CTransferManager> c2cTransferMgr(new CTransferManager("c2c_transfers.dat", 20, 100));
-    std::shared_ptr<CTransferGenerator> c2cTransferGen(new CTransferGenerator(this, c2cTransferMgr.get(), 100));
+    std::shared_ptr<CTransferGeneratorExponential> c2cTransferGen(new CTransferGeneratorExponential(this, c2cTransferMgr.get(), 25));
     c2cTransferGen->mTransferNumberGen->mSoftmaxScale = 10;
     c2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 50;
 
@@ -462,7 +537,7 @@ void CSimpleSim::SetupDefaults()
             for(auto& cloudSite : cloud->mRegions)
             {
                 auto region = dynamic_cast<gcp::CRegion*>(cloudSite.get());
-                gridSite->CreateLinkSelector(region, ONE_GiB / 128);
+                gridSite->CreateLinkSelector(region, ONE_GiB / 32);
                 region->CreateLinkSelector(gridSite.get(), ONE_GiB / 128);
                 for (auto& bucket : region->mStorageElements)
                     g2cTransferGen->mDstStorageElements.push_back(bucket.get());
