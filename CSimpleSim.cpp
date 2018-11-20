@@ -20,8 +20,8 @@ class CDataGenerator : public CScheduleable
 private:
     IBaseSim* mSim;
 
-    std::normal_distribution<float> mNumFilesRNG {20, 1};
-    std::normal_distribution<double> mFileSizeRNG {1, 0.5};
+    std::normal_distribution<float> mNumFilesRNG {40, 1};
+    std::normal_distribution<double> mFileSizeRNG {1.5, 0.25};
     std::normal_distribution<float> mFileLifetimeRNG {6, 1};
 
     std::uint32_t mTickFreq;
@@ -309,7 +309,6 @@ public:
         const std::uint32_t numToCreate = mTransferNumberGen->GetNumToCreate(rngEngine, numActive, now);
         const std::uint32_t numToCreatePerRSE = static_cast<std::uint32_t>( numToCreate/static_cast<double>(mSrcStorageElements.size()) );
         std::uint32_t totalTransfersCreated = 0;
-        //std::cout<<"["<<now<<"]\nnumActive: "<<numActive<<"\nnumToCreate: "<<numToCreate<<"\ntotalCreated: "<<numToCreatePerRSE<<std::endl;
         std::uniform_int_distribution<std::size_t> dstStorageElementRndChooser(0, mDstStorageElements.size()-1);
         for(auto& srcStorageElement : mSrcStorageElements)
         {
@@ -339,6 +338,7 @@ public:
             totalTransfersCreated += numCreated;
         }
 
+        //std::cout<<"["<<now<<"]\nnumActive: "<<numActive<<"\nnumToCreate: "<<numToCreate<<"\ntotalCreated: "<<numToCreatePerRSE<<std::endl;
         mTransferMgr->mTransferLog << 1 << "|" << now << "|" << numToCreate << "|";
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mTickFreq;
@@ -370,49 +370,50 @@ public:
         auto curRealtime = std::chrono::high_resolution_clock::now();
 
         const std::size_t numSrcStorageElements = mSrcStorageElements.size();
-        assert(numSrcStorageElements > 0);
+        const std::size_t numDstStorageElements = mDstStorageElements.size();
+        assert(numSrcStorageElements > 0 && numDstStorageElements > 0);
 
         IBaseSim::RNGEngineType& rngEngine = mSim->mRNGEngine;
+        std::exponential_distribution<double> dstStorageElementRndSelecter(0.25);
 
         const std::uint32_t numActive = static_cast<std::uint32_t>(mTransferMgr->GetNumActiveTransfers());
         const std::uint32_t numToCreate = mTransferNumberGen->GetNumToCreate(rngEngine, numActive, now);
 
-        // mean=1/lambda; mean=numToCreate/numRSEs; => lambda = 1 * numRSEs / numToCreate
-        std::exponential_distribution<double> perRSENumberGen(mDstStorageElements.size() / double(numToCreate));
-
         std::uint32_t totalTransfersCreated = 0;
-        //std::cout<<"["<<now<<"]\nnumActive: "<<numActive<<"\nnumToCreate: "<<numToCreate<<"\ntotalCreated: "<<totalTransfersCreated<<std::endl;
-        for(auto& dstStorageElement : mDstStorageElements)
+
+        for(totalTransfersCreated=0; totalTransfersCreated<numToCreate; ++totalTransfersCreated)
         {
-            std::uint32_t numCreatedPerRSE = 0;
-            const std::uint32_t numToCreatePerRSE = std::uint32_t(perRSENumberGen(rngEngine));
-            std::size_t numSrcStorageElementsTried = 0;
-            while(numCreatedPerRSE < numToCreatePerRSE && numSrcStorageElementsTried < numSrcStorageElements)
+            auto& dstStorageElement = mDstStorageElements[static_cast<std::size_t>(dstStorageElementRndSelecter(rngEngine) * 2) % numDstStorageElements];
+            bool wasTransferCreated = false;
+            for(std::size_t numSrcStorageElementsTried = 0; numSrcStorageElementsTried < numSrcStorageElements; ++numSrcStorageElementsTried)
             {
-                std::uniform_int_distribution<std::size_t> srcStorageElementRndChooser(0, numSrcStorageElements - (++numSrcStorageElementsTried));
-                auto& srcStorageElement = mSrcStorageElements[srcStorageElementRndChooser(rngEngine)];
-                std::size_t numSrcReplicas = srcStorageElement->mReplicas.size();
-                std::uniform_int_distribution<std::size_t> rngSampler(0, numSrcReplicas);
-                while(numCreatedPerRSE < numToCreatePerRSE && numSrcReplicas > 0)
+                std::uniform_int_distribution<std::size_t> srcStorageElementRndSelecter(numSrcStorageElementsTried, numSrcStorageElements - 1);
+                auto& srcStorageElement = mSrcStorageElements[srcStorageElementRndSelecter(rngEngine)];
+                const std::size_t numSrcReplicas = srcStorageElement->mReplicas.size();
+                for(std::size_t numSrcReplciasTried = 0; numSrcReplciasTried < numSrcReplicas; ++numSrcReplciasTried)
                 {
-                    auto& curReplica = srcStorageElement->mReplicas[rngSampler(rngEngine) % numSrcReplicas];
+                    std::uniform_int_distribution<std::size_t> srcReplicaRndSelecter(numSrcReplciasTried, numSrcReplicas - 1);
+                    auto& curReplica = srcStorageElement->mReplicas[srcReplicaRndSelecter(rngEngine)];
                     if(curReplica->IsComplete())
                     {
                         SReplica* const newReplica = dstStorageElement->CreateReplica(curReplica->GetFile());
                         if(newReplica != nullptr)
                         {
                             mTransferMgr->CreateTransfer(srcStorageElement, newReplica, now);
-                            ++numCreatedPerRSE;
+                            wasTransferCreated = true;
+                            break;
                         }
                     }
-                    --numSrcReplicas;
-                    auto& lastReplica = srcStorageElement->mReplicas[numSrcReplicas];
-                    std::swap(curReplica->mIndexAtStorageElement, lastReplica->mIndexAtStorageElement);
-                    std::swap(curReplica, lastReplica);
+                    auto& firstReplica = srcStorageElement->mReplicas.front();
+                    std::swap(curReplica->mIndexAtStorageElement, firstReplica->mIndexAtStorageElement);
+                    std::swap(curReplica, firstReplica);
                 }
+                if(wasTransferCreated)
+                    break;
+                std::swap(srcStorageElement, mSrcStorageElements.front());
             }
-            totalTransfersCreated += numCreatedPerRSE;
         }
+        //std::cout<<"["<<now<<"]: numActive: "<<numActive<<"; numToCreate: "<<numToCreate<<std::endl;
 
         mTransferMgr->mTransferLog << 1 << "|" << now << "|" << numToCreate << "|";
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
@@ -480,7 +481,7 @@ public:
         for(auto it : mProccessDurations)
         {
             statusOutput << "  " << std::setw(maxW) << it.first;
-            statusOutput << ": " << std::setw(7) << it.second->count();
+            statusOutput << ": " << std::setw(6) << it.second->count();
             statusOutput << "s ("<< std::setw(5) << (it.second->count() / timeDiff.count()) * 100 << "%)\n";
             *(it.second) = std::chrono::duration<double>::zero();
         }
@@ -497,19 +498,20 @@ void CSimpleSim::SetupDefaults()
 
     //proccesses
     std::vector<std::shared_ptr<CBillingGenerator>> billingGenerators;
-    std::shared_ptr<CDataGenerator> dataGen(new CDataGenerator(this, 75, 0));
+    std::shared_ptr<CDataGenerator> dataGen(new CDataGenerator(this, 50, 0));
     std::shared_ptr<CReaper> reaper(new CReaper(mRucio.get(), 600, 600));
 
 
     std::shared_ptr<CTransferManager> g2cTransferMgr(new CTransferManager("g2c_transfers.dat", 20, 100));
+    //std::shared_ptr<CTransferGeneratorUniform> g2cTransferGen(new CTransferGeneratorUniform(this, g2cTransferMgr.get(), 25));
     std::shared_ptr<CTransferGeneratorExponential> g2cTransferGen(new CTransferGeneratorExponential(this, g2cTransferMgr.get(), 25));
     g2cTransferGen->mTransferNumberGen->mSoftmaxScale = 15;
-    g2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 600;
+    g2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 500;
 
     std::shared_ptr<CTransferManager> c2cTransferMgr(new CTransferManager("c2c_transfers.dat", 20, 100));
     std::shared_ptr<CTransferGeneratorExponential> c2cTransferGen(new CTransferGeneratorExponential(this, c2cTransferMgr.get(), 25));
     c2cTransferGen->mTransferNumberGen->mSoftmaxScale = 10;
-    c2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 50;
+    c2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 40;
 
     std::shared_ptr<CHearbeat> heartbeat(new CHearbeat(this, g2cTransferMgr, c2cTransferMgr, 10000, 10000));
     heartbeat->mProccessDurations["DataGen"] = &(dataGen->mUpdateDurationSummed);

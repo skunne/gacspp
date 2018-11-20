@@ -98,7 +98,6 @@ namespace gcp
             *(mNetworkLog) << "NumTransfersFail: " << linkSelector->mFailedTransfers << std::endl;
             *(mNetworkLog) << "Transferred:      " << (linkSelector->mUsedTraffic / ONE_GiB) << " GiB" << std::endl;
             *(mNetworkLog) << "Costs:            " << costs << " CHF" << std::endl;
-            *(mNetworkLog) << std::endl;
 
             regionNetworkCosts += costs;
             sumUsedTraffic += (linkSelector->mUsedTraffic / ONE_GiB);
@@ -277,7 +276,6 @@ namespace gcp
 				auto dstRegion = dynamic_cast<CRegion*>(dstSite.get());
 				assert(dstRegion != nullptr);
 				const auto dstRegionMultiLocationIdx = dstRegion->GetMultiLocationIdx();
-				CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/64);
 				const bool isSameLocation = (*srcRegion) == (*dstRegion);
 				if (!isSameLocation && (srcRegionMultiLocationIdx != dstRegionMultiLocationIdx))
 				{
@@ -299,19 +297,21 @@ namespace gcp
 					}
 
 					assert(innerIt != outerIt->second.cend());
-
+					CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/64);
 					linkSelector->mNetworkPrice = innerIt->second;
 				}
 				else if (isSameLocation)
 				{
 					// 2. case: r1 and r2 are the same region
 					//linkselector.network_price_chf = priceSameRegion
+					CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/8);
 					linkSelector->mNetworkPrice = priceSameRegion;
 				}
 				else
 				{
 					// 3. case: region r1 is inside the multi region r2
 					//linkselector.network_price_chf = priceSameMulti
+					CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/32);
 					linkSelector->mNetworkPrice = priceSameMulti;
 				}
 			}
