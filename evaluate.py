@@ -16,8 +16,10 @@ def PlotTransferMgr(filePath, plotOutputFilePath=None):
     plt.grid(axis='y')
     with open(filePath, 'r') as infile:
         data = infile.read().split('|')
+    data.pop()
     items = (([],[]), ([],[]))
-    for idx in range(0, len(data)-1, 3):
+    print('lenData={}'.format(len(data)))
+    for idx in range(0, len(data), 3):
         eventId = int(data[idx])
         items[eventId][0].append(int(data[idx+1])/1000)
         items[eventId][1].append(int(data[idx+2]))
@@ -45,15 +47,17 @@ def PlotBilling(filePath, plotOutputFilePath=None):
             bucketsById[items[0]] = {'name': items[1], 'x': [], 'y': []}
 
         data = infile.read().split('|')
-        print('numEvents={}'.format(len(data)))
-        for idx in range(0, len(data)-10, 3):
-            bucket = bucketsById[data[idx]]
-            bucket['x'].append( int(data[idx+1])/1000 )
-            bucket['y'].append( float(data[idx+2]) )
+        data.pop()
 
-        for id in bucketsById:
-            bucket = bucketsById[id]
-            plt.plot(bucket['x'], bucket['y'], label=bucket['name'])
+    print('lenData={}'.format(len(data)))
+    for idx in range(0, len(data), 3):
+        bucket = bucketsById[data[idx]]
+        bucket['x'].append( int(data[idx+1])/1000 )
+        bucket['y'].append( float(data[idx+2]) )
+
+    for id in bucketsById:
+        bucket = bucketsById[id]
+        plt.plot(bucket['x'], bucket['y'], label=bucket['name'])
 
     plt.ylabel('Storage Volume [GiB]')
     plt.xlabel('Sim Time/1000')

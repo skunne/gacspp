@@ -85,10 +85,9 @@ namespace gcp
 			regionStorageCosts += bucket->CalculateStorageCosts(now);
 		return regionStorageCosts;
 	}
-	double CRegion::CalculateNetworkCosts(std::uint64_t now, double& sumUsedTraffic)
+	double CRegion::CalculateNetworkCosts(std::uint64_t now, double& sumUsedTraffic, std::uint64_t& sumDoneTransfers)
 	{
 		double regionNetworkCosts = 0;
-        sumUsedTraffic = 0;
 		for (auto& linkSelector : mLinkSelectors)
 		{
             double costs = CalculateNetworkCostsRecursive(linkSelector->mUsedTraffic, linkSelector->mNetworkPrice.cbegin(), linkSelector->mNetworkPrice.cend());
@@ -101,6 +100,7 @@ namespace gcp
 
             regionNetworkCosts += costs;
             sumUsedTraffic += (linkSelector->mUsedTraffic / ONE_GiB);
+            sumDoneTransfers += linkSelector->mDoneTransfers;
 			linkSelector->mUsedTraffic = 0;
             linkSelector->mDoneTransfers = 0;
             linkSelector->mFailedTransfers = 0;
@@ -124,17 +124,21 @@ namespace gcp
 		*/
 		double totalStorageCosts = 0;
 		double totalNetworkCosts = 0;
-        double sumUsedTraffic;
+        double sumUsedTraffic = 0;
+        std::uint64_t sumDoneTransfer = 0;
 		for (auto& site : mRegions)
 		{
 			auto region = dynamic_cast<CRegion*>(site.get());
 			assert(region != nullptr);
 			const double regionStorageCosts = region->CalculateStorageCosts(now);
-			const double regionNetworkCosts = region->CalculateNetworkCosts(now, sumUsedTraffic);
+			const double regionNetworkCosts = region->CalculateNetworkCosts(now, sumUsedTraffic, sumDoneTransfer);
 			//storageCosts[bucket.GetName()] = bucketCosts;
 			totalStorageCosts += regionStorageCosts;
 			totalNetworkCosts += regionNetworkCosts;
 		}
+        mNetworkLog << std::endl;
+        mNetworkLog << "sumUsedTraffic=" << sumUsedTraffic << std::endl;
+        mNetworkLog << "sumDoneTransfers=" << sumDoneTransfer << std::endl;
         return { totalStorageCosts, {totalNetworkCosts, sumUsedTraffic } };
 	}
 	void CCloud::SetupDefaultCloud()

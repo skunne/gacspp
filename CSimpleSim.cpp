@@ -126,26 +126,51 @@ public:
 class CBillingGenerator : public CScheduleable
 {
 private:
-    IBaseCloud* mCloud;
+    IBaseSim* mSim;
 
     std::uint32_t mTickFreq;
 
 public:
-    CBillingGenerator(IBaseCloud* cloud, const std::uint32_t tickFreq=SECONDS_PER_MONTH, const CScheduleable::TickType startTick=SECONDS_PER_MONTH)
+    CBillingGenerator(IBaseSim* sim, const std::uint32_t tickFreq=SECONDS_PER_MONTH, const CScheduleable::TickType startTick=SECONDS_PER_MONTH)
         : CScheduleable(startTick),
-          mCloud(cloud),
+          mSim(sim),
           mTickFreq(tickFreq)
     {}
 
     void OnUpdate(const CScheduleable::TickType now) final
     {
-        std::cout<<mCloud->GetName()<<" - Billing for Month "<<(now/SECONDS_PER_MONTH)<<":\n";
-        auto res = mCloud->ProcessBilling(now);
-        std::cout << "\tStorage: " << res.first << " CHF" << std::endl;
-        std::cout << "\tNetwork: " << res.second.first << " CHF" << std::endl;
-        std::cout << "\tNetwork: " << res.second.second << " GiB" << std::endl;
+        const std::string caption = std::string(10, '=') + " Monthly Summary " + std::string(10, '=');
         std::cout << std::endl;
+        std::cout << std::string(caption.length(), '=') << std::endl;
+        std::cout << caption << std::endl;
+        std::cout << std::string(caption.length(), '=') << std::endl;
 
+        std::cout << "-Grid2Cloud Link Stats-" << std::endl;
+        for(auto& srcGridSite : mSim->mRucio->mGridSites)
+        {
+            std::cout << srcGridSite->GetName() << std::endl;
+            for (auto& dstRegion : mSim->mClouds[0]->mRegions)
+            {
+                auto link = srcGridSite->GetLinkSelector(dstRegion.get());
+                if (link == nullptr)
+                    continue;
+                std::cout << "\t--> " << dstRegion->GetName() << ": " << link->mDoneTransfers << std::endl;
+                link->mDoneTransfers = 0;
+            }
+        }
+        for(auto& cloud : mSim->mClouds)
+        {
+            std::cout << std::endl;
+            std::cout<<cloud->GetName()<<" - Billing for Month "<<(now/SECONDS_PER_MONTH)<<":\n";
+            auto res = cloud->ProcessBilling(now);
+            std::cout << "\tStorage: " << res.first << " CHF" << std::endl;
+            std::cout << "\tNetwork: " << res.second.first << " CHF" << std::endl;
+            std::cout << "\tNetwork: " << res.second.second << " GiB" << std::endl;
+        }
+
+        std::cout << std::string(caption.length(), '=') << std::endl;
+        std::cout << std::endl;
+        
         mNextCallTick = now + mTickFreq;
     }
 };
@@ -467,9 +492,9 @@ public:
         statusOutput << "AvgTransferDuration: " << (mG2CTransferMgr->mSummedTransferDuration / mG2CTransferMgr->mNumCompletedTransfers);
         statusOutput << " + " << (mC2CTransferMgr->mSummedTransferDuration / mC2CTransferMgr->mNumCompletedTransfers) << std::endl;
 
-        mG2CTransferMgr->mNumCompletedTransfers = 0;
+       // mG2CTransferMgr->mNumCompletedTransfers = 0;
         mG2CTransferMgr->mSummedTransferDuration = 0;
-        mC2CTransferMgr->mNumCompletedTransfers = 0;
+        //mC2CTransferMgr->mNumCompletedTransfers = 0;
         mC2CTransferMgr->mSummedTransferDuration = 0;
 
 		std::size_t maxW = 0;
@@ -545,7 +570,7 @@ void CSimpleSim::SetupDefaults()
                     g2cTransferGen->mDstStorageElements.push_back(bucket.get());
             }
         }
-        mSchedule.emplace(new CBillingGenerator(cloud.get()));
+        mSchedule.emplace(new CBillingGenerator(this));
     }
     g2cTransferGen->mSrcStorageElements = gridStoragleElements;
     dataGen->mStorageElements = gridStoragleElements;
