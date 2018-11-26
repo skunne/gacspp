@@ -170,7 +170,7 @@ public:
 
         std::cout << std::string(caption.length(), '=') << std::endl;
         std::cout << std::endl;
-        
+
         mNextCallTick = now + mTickFreq;
     }
 };
@@ -210,12 +210,14 @@ private:
 
 public:
     std::ofstream mTransferLog;
+    std::ofstream mTrafficLog;
     std::uint32_t mNumCompletedTransfers = 0;
     std::uint64_t mSummedTransferDuration = 0;
-    CTransferManager(const std::string& logFilePath, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
+    CTransferManager(const std::string& transferLogFilePath, const std::string& trafficLogFilePath, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
         : CScheduleable(startTick),
           mTickFreq(tickFreq),
-          mTransferLog(logFilePath)
+          mTransferLog(transferLogFilePath),
+          mTrafficLog(trafficLogFilePath)
     {
         mActiveTransfers.reserve(2048);
     }
@@ -242,6 +244,7 @@ public:
         mLastUpdated = now;
 
         std::size_t idx = 0;
+        std::uint64_t summedTraffic = 0;
         while (idx < mActiveTransfers.size())
         {
             auto& transfer = mActiveTransfers[idx];
@@ -257,6 +260,7 @@ public:
             const double sharedBandwidth = linkSelector->mBandwidth / static_cast<double>(linkSelector->mNumActiveTransfers);
             std::uint32_t amount = static_cast<std::uint32_t>(sharedBandwidth * timeDiff);
             amount = dstReplica->Increase(amount, now);
+            summedTraffic += amount;
             linkSelector->mUsedTraffic += amount;
 
             if(dstReplica->IsComplete())
@@ -270,6 +274,7 @@ public:
             }
             ++idx;
         }
+        mTrafficLog << now << "|" << summedTraffic << "|";
 
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mTickFreq;
@@ -527,13 +532,13 @@ void CSimpleSim::SetupDefaults()
     std::shared_ptr<CReaper> reaper(new CReaper(mRucio.get(), 600, 600));
 
 
-    std::shared_ptr<CTransferManager> g2cTransferMgr(new CTransferManager("g2c_transfers.dat", 20, 100));
+    std::shared_ptr<CTransferManager> g2cTransferMgr(new CTransferManager("g2c_transfers.dat", "g2c_traffic.dat", 20, 100));
     //std::shared_ptr<CTransferGeneratorUniform> g2cTransferGen(new CTransferGeneratorUniform(this, g2cTransferMgr.get(), 25));
     std::shared_ptr<CTransferGeneratorExponential> g2cTransferGen(new CTransferGeneratorExponential(this, g2cTransferMgr.get(), 25));
     g2cTransferGen->mTransferNumberGen->mSoftmaxScale = 15;
     g2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 500;
 
-    std::shared_ptr<CTransferManager> c2cTransferMgr(new CTransferManager("c2c_transfers.dat", 20, 100));
+    std::shared_ptr<CTransferManager> c2cTransferMgr(new CTransferManager("c2c_transfers.dat", "c2c_traffic.dat", 20, 100));
     std::shared_ptr<CTransferGeneratorExponential> c2cTransferGen(new CTransferGeneratorExponential(this, c2cTransferMgr.get(), 25));
     c2cTransferGen->mTransferNumberGen->mSoftmaxScale = 10;
     c2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 40;
