@@ -43,7 +43,7 @@ namespace gcp
 				const double costsOfTimeDiff = storageGiB * price * SECONDS_TO_MONTHS(timeDiff);
 				costs += costsOfTimeDiff;
 				timeOffset = storageEvent.first;
-                (*mStorageLog) << mLogId << '|' << storageEvent.first << '|' << (usedStorageAtGivenTime / ONE_GiB) << '|';
+                //(*mStorageLog) << mLogId << '|' << storageEvent.first << '|' << (usedStorageAtGivenTime / ONE_GiB) << '|';
 			}
 			usedStorageAtGivenTime += storageEvent.second;
 		}
@@ -92,11 +92,11 @@ namespace gcp
 		{
             double costs = CalculateNetworkCostsRecursive(linkSelector->mUsedTraffic, linkSelector->mNetworkPrice.cbegin(), linkSelector->mNetworkPrice.cend());
 
-            *(mNetworkLog) << "### " << linkSelector->mSrcSiteName << " --> " << linkSelector->mDstSiteName << " ###" << std::endl;
+            /*(mNetworkLog) << "### " << linkSelector->mSrcSiteName << " --> " << linkSelector->mDstSiteName << " ###" << std::endl;
             *(mNetworkLog) << "NumTransfersDone: " << linkSelector->mDoneTransfers << std::endl;
             *(mNetworkLog) << "NumTransfersFail: " << linkSelector->mFailedTransfers << std::endl;
             *(mNetworkLog) << "Transferred:      " << (linkSelector->mUsedTraffic / ONE_GiB) << " GiB" << std::endl;
-            *(mNetworkLog) << "Costs:            " << costs << " CHF" << std::endl;
+            *(mNetworkLog) << "Costs:            " << costs << " CHF" << std::endl;*/
 
             regionNetworkCosts += costs;
             sumUsedTraffic += (linkSelector->mUsedTraffic / ONE_GiB);
@@ -136,9 +136,9 @@ namespace gcp
 			totalStorageCosts += regionStorageCosts;
 			totalNetworkCosts += regionNetworkCosts;
 		}
-        mNetworkLog << std::endl;
-        mNetworkLog << "sumUsedTraffic=" << sumUsedTraffic << std::endl;
-        mNetworkLog << "sumDoneTransfers=" << sumDoneTransfer << std::endl;
+        //mNetworkLog << std::endl;
+        //mNetworkLog << "sumUsedTraffic=" << sumUsedTraffic << std::endl;
+        //mNetworkLog << "sumDoneTransfers=" << sumDoneTransfer << std::endl;
         return { totalStorageCosts, {totalNetworkCosts, sumUsedTraffic } };
 	}
 	void CCloud::SetupDefaultCloud()
@@ -187,7 +187,7 @@ namespace gcp
 		CreateRegion(4, "us-east1", "South Carolina", 0.01978300, "E5F0-6A5D-7BAD");
 		CreateRegion(4, "us-east4", "Northern Virginia", 0.02275045, "5F7A-5173-CF5B");
 
-		mStorageLog.open(GetName() + "_storage.dat");
+		//mStorageLog.open(GetName() + "_storage.dat");
 		std::uint32_t id = 0;
 		for(auto& site : mRegions)
 		{
@@ -196,11 +196,11 @@ namespace gcp
 			auto bucket = region->CreateStorageElement((region->GetName() + "_default_bucket"));
 
 			//logging
-			bucket->mStorageLog = &mStorageLog;
-			bucket->mLogId = id++;
-			mStorageLog<<bucket->mLogId<<":"<<bucket->GetName()<<std::endl;
+			//bucket->mStorageLog = &mStorageLog;
+			//bucket->mLogId = id++;
+			//mStorageLog<<bucket->mLogId<<":"<<bucket->GetName()<<std::endl;
 		}
-		mStorageLog<<"body"<<std::endl;
+		//mStorageLog<<"body"<<std::endl;
 
 		//CreateRegion("us", "northamerica-northeast1", "Montreal", 0.02275045, "E466-8D73-08F4");
 		//CreateRegion("northamerica-northeast1', 'northamerica-northeast1', 'Montreal', 0.02275045, "E466-8D73-08F4")
@@ -267,12 +267,12 @@ namespace gcp
 			{ 3, { { 4,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } } } }
 		};
 
-        mNetworkLog.open(GetName() + "_network.dat");
-        mNetworkLog << std::fixed << std::setprecision(2);
+        //mNetworkLog.open(GetName() + "_network.dat");
+        //mNetworkLog << std::fixed << std::setprecision(2);
 		for (auto& srcSite : mRegions)
 		{
 			auto srcRegion = dynamic_cast<CRegion*>(srcSite.get());
-            srcRegion->mNetworkLog = &mNetworkLog;
+            //srcRegion->mNetworkLog = &mNetworkLog;
 			assert(srcRegion != nullptr);
 			const auto srcRegionMultiLocationIdx = srcRegion->GetMultiLocationIdx();
 			for (auto& dstSite : mRegions)

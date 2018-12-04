@@ -39,8 +39,8 @@ namespace gcp
 		std::vector<std::pair<std::uint64_t, std::int64_t>> mBucketEvents;
 
 	public:
-		std::uint32_t mLogId;
-		std::ofstream *mStorageLog;
+		//std::uint32_t mLogId;
+		//std::ofstream *mStorageLog;
 
 		CBucket(std::string&& name, CRegion* region);
 		CBucket(CBucket&&) = default;
@@ -58,7 +58,7 @@ namespace gcp
 		double mStoragePriceCHF;
 
 	public:
-        std::ofstream *mNetworkLog;
+        //std::ofstream *mNetworkLog;
 		std::vector<std::unique_ptr<CBucket>> mStorageElements;
 
 		CRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId);
@@ -76,8 +76,8 @@ namespace gcp
 	class CCloud final : public IBaseCloud
 	{
 	private:
-		std::ofstream mStorageLog;
-        std::ofstream mNetworkLog;
+		//std::ofstream mStorageLog;
+        //std::ofstream mNetworkLog;
 
 	public:
 		//std::vector<std::unique_ptr<CRegion>> mRegions;

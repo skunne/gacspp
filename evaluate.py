@@ -54,7 +54,7 @@ def PlotBilling(filePath, plotOutputFilePath=None):
         data.pop()
 
     print('lenData={}'.format(len(data)))
-    for idx in range(0, len(data), 3):
+    for idx in range(0, len(data)-3, 3):
         bucket = bucketsById[data[idx]]
         bucket['x'].append( int(data[idx+1])/1000 )
         bucket['y'].append( float(data[idx+2]) )
@@ -72,7 +72,7 @@ def PlotBilling(filePath, plotOutputFilePath=None):
         plt.savefig('{}.svg'.format(plotOutputFilePath))
 
 
-def PlotTrafficDiff(simFilePath, refFilePath, plotOutputFilePath=None):
+def PlotTrafficDiff(simFilePath, refFilePath, startingSecond, plotOutputFilePath=None):
     plt.figure(num=simFilePath, figsize=(40.96, 21.60), dpi=100)
     plt.ticklabel_format(axis='both', style='plain')
     plt.grid(axis='y')
@@ -82,13 +82,17 @@ def PlotTrafficDiff(simFilePath, refFilePath, plotOutputFilePath=None):
     data.pop()
     print('lenData={}'.format(len(data)))
     simY = [0]
-    intervalEnd = 3600*3
+    intervalEnd = startingSecond + 3600*3
     for idx in range(0, len(data), 2):
-        if int(data[idx]) >= intervalEnd:
+        now = int(data[idx])
+        if now < startingSecond:
+            continue
+        if now  >= intervalEnd:
             simY.append(simY[-1])
             intervalEnd += 3600*3
         simY[-1] += int(data[idx+1])
-    plt.plot(range(0, intervalEnd, 3600*3), simY, label='SummedSimTraffic')
+
+    plt.plot(range(0, intervalEnd-startingSecond, 3600*3), simY, label='SummedSimTraffic')
 
     refX = [0]
     refY = []
@@ -101,10 +105,8 @@ def PlotTrafficDiff(simFilePath, refFilePath, plotOutputFilePath=None):
         for line in infile.readlines():
             data = line.strip().split(',')
             x = int(int(data[0]) / 1000)
-            print('{} - {} = {}'.format(x, baseX, x-baseX))
             refX.append(x - baseX)
             refY.append(int(data[1]))
-    print((len(refY), len(simY)))
     print('lenData={}'.format(len(refY)))
     plt.plot(refX, refY, label='SummedRefTraffic')
 
@@ -174,7 +176,8 @@ def TrafficDiffPlotHandler(options, argsDict):
         else:
             print('Force disabled and file exists: {}'.format(dstRefFilePath))
     plotFunc = argsDict.get(options[2][0].replace('-', '_'))
-    plotFunc(simTrafficFilePath, refTrafficFilePath, plotFilePath)
+    startingSecond = 3600*24*30 * max(0, argsDict['StartingMonth'] - 1)
+    plotFunc(simTrafficFilePath, refTrafficFilePath, startingSecond, plotFilePath)
 
 
 parser = argparse.ArgumentParser(description='Evaluates sim output')
@@ -183,6 +186,7 @@ parser.add_argument('EvaluationNr', type=int, nargs='?', help='Running number of
 parser.add_argument('--input-base-path', dest='InputBasePath', default='')
 parser.add_argument('--output-base-path', dest='OutputBasePath', default='results')
 parser.add_argument('--force', dest='Force', action='store_true')
+parser.add_argument('--starting-month', type=int, dest='StartingMonth', default=1)
 
 option_groups = [
     {'options': [('g2c-transfermgr-file', {'default': 'g2c_transfers.dat'}),

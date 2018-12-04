@@ -36,6 +36,7 @@ input/
 results/
 *.png
 *.dat
+*.csv
 
 # Windows specific
 .vs

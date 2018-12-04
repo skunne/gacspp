@@ -4,11 +4,8 @@
 #include "CRucio.hpp"
 
 
-SFile::IdType SFile::IdCounter = 0;
-ISite::IdType ISite::IdCounter = 0;
-
 SFile::SFile(const std::uint32_t size, const IBaseSim::TickType expiresAt)
-    : mId(++IdCounter),
+    : mId(GetNewId()),
       mSize(size),
       mExpiresAt(expiresAt)
 {
@@ -50,7 +47,7 @@ void SReplica::Remove(const IBaseSim::TickType now)
 
 
 ISite::ISite(std::string&& name, std::string&& locationName)
-	: mId(++IdCounter),
+	: mId(GetNewId()),
       mName(std::move(name)),
 	  mLocationName(std::move(locationName))
 {}
@@ -58,9 +55,7 @@ auto ISite::CreateLinkSelector(const ISite* const dstSite, const std::uint32_t b
 {
     auto result = mDstSiteIdToLinkSelectorIdx.insert({dstSite->mId, mLinkSelectors.size()});
     assert(result.second);
-    CLinkSelector* newLinkSelector = new CLinkSelector(bandwidth);
-    newLinkSelector->mSrcSiteName = mName;
-    newLinkSelector->mDstSiteName = dstSite->mName;
+    CLinkSelector* newLinkSelector = new CLinkSelector(bandwidth, mId, dstSite->mId);
     mLinkSelectors.emplace_back(newLinkSelector);
     return newLinkSelector;
 }
@@ -88,7 +83,8 @@ auto CGridSite::CreateStorageElement(std::string&& name) -> CStorageElement*
 
 
 CStorageElement::CStorageElement(std::string&& name, ISite* const site)
-	: mName(std::move(name)),
+	: mId(GetNewId()),
+      mName(std::move(name)),
 	  mSite(site)
 {
 	mFileIds.reserve(50000);

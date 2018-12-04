@@ -13,3 +13,10 @@
 #define SECONDS_PER_MONTH (SECONDS_PER_DAY * 30.0)
 #define SECONDS_TO_MONTHS(x) ((x)/SECONDS_PER_MONTH)
 #define DAYS_TO_SECONDS(x) ((x) * SECONDS_PER_DAY)
+
+typedef std::uint64_t IdType;
+inline IdType GetNewId()
+{
+    static IdType id = 0;
+    return ++id;
+}

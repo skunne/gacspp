@@ -10,10 +10,41 @@
 #include "constants.h"
 #include "CCloudGCP.hpp"
 #include "CRucio.hpp"
+#include "COutput.hpp"
 #include "CScheduleable.hpp"
 #include "CSimpleSim.hpp"
 
 #include <fstream>
+
+
+/*
+int sqlite3_bind_double(sqlite3_stmt*, int, double);
+int sqlite3_bind_int(sqlite3_stmt*, int, int);
+int sqlite3_bind_int64(sqlite3_stmt*, int, sqlite3_int64);
+int sqlite3_bind_text(sqlite3_stmt*,int,const char*,int,void(*)(void*));
+*/
+class CTransferInsertStatement : public IConcreteStatement
+{
+public:
+    IdType
+    CTransferInsertStatement()
+    {
+        mPreparedStatementIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?, ?);");
+    }
+
+    bool BindAndExecute(sqlite3* const db, sqlite3_stmt* const stmt) final
+    {
+        sqlite3_bind_int64(stmt, 1, transferId);
+        sqlite3_bind_int64(stmt, 2, srcStorageElementId);
+        sqlite3_bind_int64(stmt, 3, dstStorageElementId);
+        sqlite3_bind_int64(stmt, 4, startTick);
+        sqlite3_bind_int64(stmt, 5, endTick);
+        sqlite3_bind_int64(stmt, 6, filesize);
+        sqlite3_step(stmt);
+        return true;
+    }
+};
+
 
 class CDataGenerator : public CScheduleable
 {
@@ -209,15 +240,15 @@ private:
     std::vector<STransfer> mActiveTransfers;
 
 public:
-    std::ofstream mTransferLog;
-    std::ofstream mTrafficLog;
+    //std::ofstream mTransferLog;
+    //std::ofstream mTrafficLog;
     std::uint32_t mNumCompletedTransfers = 0;
     std::uint64_t mSummedTransferDuration = 0;
     CTransferManager(const std::string& transferLogFilePath, const std::string& trafficLogFilePath, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
         : CScheduleable(startTick),
-          mTickFreq(tickFreq),
-          mTransferLog(transferLogFilePath),
-          mTrafficLog(trafficLogFilePath)
+          mTickFreq(tickFreq)//,
+          //mTransferLog(transferLogFilePath),
+          //mTrafficLog(trafficLogFilePath)
     {
         mActiveTransfers.reserve(2048);
     }
@@ -239,7 +270,7 @@ public:
     void OnUpdate(const CScheduleable::TickType now) final
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
-        mTransferLog << 0 << "|" << now << "|" << mActiveTransfers.size() << "|";
+        //mTransferLog << 0 << "|" << now << "|" << mActiveTransfers.size() << "|";
 		const std::uint32_t timeDiff = static_cast<std::uint32_t>(now - mLastUpdated);
         mLastUpdated = now;
 
@@ -274,7 +305,7 @@ public:
             }
             ++idx;
         }
-        mTrafficLog << now << "|" << summedTraffic << "|";
+        //mTrafficLog << now << "|" << summedTraffic << "|";
 
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mTickFreq;
@@ -317,7 +348,7 @@ private:
     std::uint32_t mTickFreq;
 
 public:
-    std::ofstream* mTransferLog;
+    //std::ofstream* mTransferLog;
     std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
     std::vector<CStorageElement*> mSrcStorageElements;
     std::vector<CStorageElement*> mDstStorageElements;
@@ -369,7 +400,7 @@ public:
         }
 
         //std::cout<<"["<<now<<"]\nnumActive: "<<numActive<<"\nnumToCreate: "<<numToCreate<<"\ntotalCreated: "<<numToCreatePerRSE<<std::endl;
-        mTransferMgr->mTransferLog << 1 << "|" << now << "|" << numToCreate << "|";
+        //mTransferMgr->mTransferLog << 1 << "|" << now << "|" << numToCreate << "|";
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mTickFreq;
     }
@@ -382,7 +413,7 @@ private:
     std::uint32_t mTickFreq;
 
 public:
-    std::ofstream* mTransferLog;
+    //std::ofstream* mTransferLog;
     std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
     std::vector<CStorageElement*> mSrcStorageElements;
     std::vector<CStorageElement*> mDstStorageElements;
@@ -445,7 +476,7 @@ public:
         }
         //std::cout<<"["<<now<<"]: numActive: "<<numActive<<"; numToCreate: "<<numToCreate<<std::endl;
 
-        mTransferMgr->mTransferLog << 1 << "|" << now << "|" << numToCreate << "|";
+        //mTransferMgr->mTransferLog << 1 << "|" << now << "|" << numToCreate << "|";
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mTickFreq;
     }
@@ -521,10 +552,60 @@ public:
     }
 };
 
+bool InsertSite(ISite* site)
+{
+    std::stringstream row;
+    row << site->GetId() << ",'"
+        << site->GetName() << "','"
+        << site->GetLocationName() << "'";
+    return COutput::GetRef().InsertRow("Sites", row.str());
+}
+bool InsertStorageElement(CStorageElement* storageElement)
+{
+    std::stringstream row;
+    row << storageElement->GetId() << ","
+        << storageElement->GetSite()->GetId() << ",'"
+        << storageElement->GetName() << "'";
+    return COutput::GetRef().InsertRow("StorageElements", row.str());
+}
+bool InsertLinkSelector(CLinkSelector* linkselector)
+{
+    std::stringstream row;
+    row << linkselector->GetId() << ","
+        << linkselector->GetSrcSiteId() << ","
+        << linkselector->GetDstSiteId();
+    return COutput::GetRef().InsertRow("LinkSelectors", row.str());
+}
 
 void CSimpleSim::SetupDefaults()
 {
     mRucio.reset(new CRucio);
+
+    COutput& output = COutput::GetRef();
+
+    std::stringstream columns;
+    bool ok = false;
+
+    ok = output.CreateTable("Sites", "id INTEGER PRIMARY KEY, name varchar(64), locationName varchar(64)");
+    assert(ok);
+
+    ok = output.CreateTable("StorageElements", "id INTEGER PRIMARY KEY, siteId INTEGER, name varchar(64), FOREIGN KEY(siteId) REFERENCES Sites(id)");
+    assert(ok);
+
+    ok = output.CreateTable("LinkSelectors", "id INTEGER PRIMARY KEY, srcSiteId INTEGER, dstSiteId INTEGER, FOREIGN KEY(srcSiteId) REFERENCES Sites(id), FOREIGN KEY(dstSiteId) REFERENCES Sites(id)");
+    assert(ok);
+
+    columns << "id INTEGER PRIMARY KEY,"
+            << "srcStorageElementId INTEGER,"
+            << "dstStorageElementId INTEGER,"
+            << "startTick INTEGER,"
+            << "endTick INTEGER,"
+            << "filesize INTEGER,"
+            << "FOREIGN KEY(srcStorageElementId) REFERENCES StorageElements(id),"
+            << "FOREIGN KEY(dstStorageElementId) REFERENCES StorageElements(id)";
+    ok = output.CreateTable("Transfers", columns.str());
+    assert(ok);
+    //INSERT INTO Transfers VALUES(?, ?, ?, ?, ?, ?);
 
     //proccesses
     std::vector<std::shared_ptr<CBillingGenerator>> billingGenerators;
@@ -582,6 +663,40 @@ void CSimpleSim::SetupDefaults()
 
     c2cTransferGen->mSrcStorageElements = g2cTransferGen->mDstStorageElements;
     c2cTransferGen->mDstStorageElements = g2cTransferGen->mDstStorageElements;
+
+    for(auto& gridSite : mRucio->mGridSites)
+    {
+        ok = InsertSite(gridSite.get());
+        assert(ok);
+        for(auto& storageElement : gridSite->mStorageElements)
+        {
+            ok = InsertStorageElement(storageElement.get());
+            assert(ok);
+        }
+        for(auto& linkselector : gridSite->mLinkSelectors)
+        {
+            ok = InsertLinkSelector(linkselector.get());
+            assert(ok);
+        }
+    }
+
+    for(std::unique_ptr<ISite>& cloudSite : mClouds[0]->mRegions)
+    {
+        auto region = dynamic_cast<gcp::CRegion*>(cloudSite.get());
+        assert(region);
+        ok = InsertSite(region);
+        assert(ok);
+        for (std::unique_ptr<gcp::CBucket>& bucket : region->mStorageElements)
+        {
+            ok = InsertStorageElement(bucket.get());
+            assert(ok);
+        }
+        for(std::unique_ptr<CLinkSelector>& linkselector : region->mLinkSelectors)
+        {
+            ok = InsertLinkSelector(linkselector.get());
+            assert(ok);
+        }
+    }
 
     mSchedule.push(dataGen);
     mSchedule.push(reaper);

@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "constants.h"
 #include "IBaseSim.hpp"
 
 class ISite;
@@ -14,19 +15,32 @@ struct SReplica;
 
 class CLinkSelector
 {
-public:
+private:
     //monitoring
-    std::string mSrcSiteName;
-    std::string mDstSiteName;
+    IdType mId;
+    IdType mSrcSiteId;
+    IdType mDstSiteId;
+public:
     std::uint32_t mDoneTransfers = 0;
     std::uint32_t mFailedTransfers = 0;
 
 public:
 	typedef std::vector<std::pair<std::uint64_t, double>> PriceInfoType;
 
-	CLinkSelector(const std::uint32_t bandwidth)
-		: mBandwidth(bandwidth)
+	CLinkSelector(const std::uint32_t bandwidth, const IdType srcSiteId, const IdType dstSiteId)
+		: mId(GetNewId()),
+          mSrcSiteId(srcSiteId),
+          mDstSiteId(dstSiteId),
+          mBandwidth(bandwidth)
 	{}
+
+    inline auto GetId() const -> IdType
+    {return mId;}
+    inline auto GetSrcSiteId() const -> IdType
+    {return mSrcSiteId;}
+    inline auto GetDstSiteId() const -> IdType
+    {return mDstSiteId;}
+
     PriceInfoType mNetworkPrice = {{0,0}};
     std::uint64_t mUsedTraffic = 0;
     std::uint32_t mNumActiveTransfers = 0;
@@ -35,12 +49,7 @@ public:
 
 struct SFile
 {
-public:
-    typedef std::uint64_t IdType;
-
 private:
-    static IdType IdCounter;
-
     IdType mId;
     std::uint32_t mSize;
 
@@ -102,8 +111,9 @@ public:
 class CStorageElement
 {
 private:
+    IdType mId;
     std::string mName;
-	std::unordered_set<SFile::IdType> mFileIds;
+	std::unordered_set<IdType> mFileIds;
 
 protected:
     ISite* mSite;
@@ -124,6 +134,8 @@ public:
     virtual void OnIncreaseReplica(const std::uint64_t amount, const IBaseSim::TickType now);
     virtual void OnRemoveReplica(const SReplica* replica, const IBaseSim::TickType now);
 
+	inline auto GetId() const -> IdType
+	{return mId;}
     inline auto GetName() const -> const std::string&
     {return mName;}
     inline auto GetSite() const -> const ISite*
@@ -134,20 +146,16 @@ public:
 
 class ISite
 {
-public:
-    typedef std::uint64_t IdType;
-
 private:
-    static IdType IdCounter;
 	IdType mId;
     std::string mName;
 	std::string mLocationName;
 
 protected:
-    std::vector<std::unique_ptr<CLinkSelector>> mLinkSelectors;
 	std::unordered_map<IdType, std::size_t> mDstSiteIdToLinkSelectorIdx;
 
 public:
+    std::vector<std::unique_ptr<CLinkSelector>> mLinkSelectors;
 	ISite(std::string&& name, std::string&& locationName);
 	virtual ~ISite() = default;
 
