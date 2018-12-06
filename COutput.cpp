@@ -122,7 +122,7 @@ void COutput::ConsumerThread()
             mConsumerIdx = (mConsumerIdx + 1) % OUTPUT_BUF_SIZE;
             assert(statement != nullptr);
             auto sqlStmt = mPreparedStatements[statement->GetPreparedStatementIdx()];
-            statement->BindAndExecute(mDB, sqlStmt);
+            statement->BindAndExecute(sqlStmt);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }

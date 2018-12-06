@@ -16,10 +16,13 @@ protected:
     std::size_t mPreparedStatementIdx = 0;
 
 public:
+    IConcreteStatement(std::size_t preparedStatementIdx)
+        : mPreparedStatementIdx(preparedStatementIdx)
+    {}
     inline auto GetPreparedStatementIdx() const -> std::size_t
     {return mPreparedStatementIdx;}
 
-    virtual void BindAndExecute(sqlite3* const db, sqlite3_stmt* const stmt) = 0;
+    virtual bool BindAndExecute(sqlite3_stmt* const stmt) = 0;
 };
 
 class COutput

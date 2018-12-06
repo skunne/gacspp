@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -14,8 +15,7 @@
 #include "CScheduleable.hpp"
 #include "CSimpleSim.hpp"
 
-#include <fstream>
-
+#include "sqlite3.h"
 
 /*
 int sqlite3_bind_double(sqlite3_stmt*, int, double);
@@ -26,23 +26,40 @@ int sqlite3_bind_text(sqlite3_stmt*,int,const char*,int,void(*)(void*));
 class CTransferInsertStatement : public IConcreteStatement
 {
 public:
-    IdType
-    CTransferInsertStatement()
+    struct SValue
     {
-        mPreparedStatementIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?, ?);");
+        IdType mTransferId;
+        IdType mSrcStorageElementId;
+        IdType mDstStorageElementId;
+        IBaseSim::TickType mStartTick;
+        IBaseSim::TickType mEndTick;
+        std::uint32_t mFileSize;
+    };
+
+    CTransferInsertStatement(std::vector<std::unique_ptr<SValue>>&& values, std::size_t preparedStatementIdx)
+        : IConcreteStatement(preparedStatementIdx),
+          mValues(std::move(values))
+    {
+        assert(!mValues.empty());
     }
 
-    bool BindAndExecute(sqlite3* const db, sqlite3_stmt* const stmt) final
+    bool BindAndExecute(sqlite3_stmt* const stmt) final
     {
-        sqlite3_bind_int64(stmt, 1, transferId);
-        sqlite3_bind_int64(stmt, 2, srcStorageElementId);
-        sqlite3_bind_int64(stmt, 3, dstStorageElementId);
-        sqlite3_bind_int64(stmt, 4, startTick);
-        sqlite3_bind_int64(stmt, 5, endTick);
-        sqlite3_bind_int64(stmt, 6, filesize);
-        sqlite3_step(stmt);
+        for(const std::unique_ptr<SValue>& value : mValues)
+        {
+            sqlite3_bind_int64(stmt, 1, value->mTransferId);
+            sqlite3_bind_int64(stmt, 2, value->mSrcStorageElementId);
+            sqlite3_bind_int64(stmt, 3, value->mDstStorageElementId);
+            sqlite3_bind_int64(stmt, 4, value->mStartTick);
+            sqlite3_bind_int64(stmt, 5, value->mEndTick);
+            sqlite3_bind_int(stmt, 6, value->mFileSize);
+            sqlite3_step(stmt);
+        }
         return true;
     }
+
+private:
+    std::vector<std::unique_ptr<SValue>> mValues;
 };
 
 
@@ -209,6 +226,8 @@ public:
 class CTransferManager : public CScheduleable
 {
 private:
+    std::size_t mOutputQueryIdx;
+
     CScheduleable::TickType mLastUpdated = 0;
     std::uint32_t mTickFreq;
 
@@ -251,6 +270,7 @@ public:
           //mTrafficLog(trafficLogFilePath)
     {
         mActiveTransfers.reserve(2048);
+        mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?, ?);");
     }
 
     void CreateTransfer(CLinkSelector* const linkSelector, SReplica* const dstReplica, const CScheduleable::TickType now)
@@ -276,6 +296,7 @@ public:
 
         std::size_t idx = 0;
         std::uint64_t summedTraffic = 0;
+        std::vector<std::unique_ptr<CTransferInsertStatement::SValue>> outputEvents;
         while (idx < mActiveTransfers.size())
         {
             auto& transfer = mActiveTransfers[idx];
@@ -296,6 +317,7 @@ public:
 
             if(dstReplica->IsComplete())
             {
+                outputEvents.emplace_back(new CTransferInsertStatement::SValue{GetNewId(), 0, dstReplica->GetStorageElement()->GetId(), transfer.mStartTick, now, dstReplica->GetFile()->GetSize()});
                 ++linkSelector->mDoneTransfers;
                 ++mNumCompletedTransfers;
                 mSummedTransferDuration += now - transfer.mStartTick;
@@ -304,6 +326,10 @@ public:
                 continue; // handle same idx again
             }
             ++idx;
+        }
+        if(!outputEvents.empty())
+        {
+            COutput::GetRef().QueueStatement(new CTransferInsertStatement(std::move(outputEvents), mOutputQueryIdx));
         }
         //mTrafficLog << now << "|" << summedTraffic << "|";
 
@@ -589,17 +615,17 @@ void CSimpleSim::SetupDefaults()
     ok = output.CreateTable("Sites", "id INTEGER PRIMARY KEY, name varchar(64), locationName varchar(64)");
     assert(ok);
 
-    ok = output.CreateTable("StorageElements", "id INTEGER PRIMARY KEY, siteId INTEGER, name varchar(64), FOREIGN KEY(siteId) REFERENCES Sites(id)");
+    ok = output.CreateTable("StorageElements", "id BIGINT PRIMARY KEY, siteId INTEGER, name varchar(64), FOREIGN KEY(siteId) REFERENCES Sites(id)");
     assert(ok);
 
     ok = output.CreateTable("LinkSelectors", "id INTEGER PRIMARY KEY, srcSiteId INTEGER, dstSiteId INTEGER, FOREIGN KEY(srcSiteId) REFERENCES Sites(id), FOREIGN KEY(dstSiteId) REFERENCES Sites(id)");
     assert(ok);
 
-    columns << "id INTEGER PRIMARY KEY,"
-            << "srcStorageElementId INTEGER,"
-            << "dstStorageElementId INTEGER,"
-            << "startTick INTEGER,"
-            << "endTick INTEGER,"
+    columns << "id BIGINT PRIMARY KEY,"
+            << "srcStorageElementId BIGINT,"
+            << "dstStorageElementId BIGINT,"
+            << "startTick BIGINT,"
+            << "endTick BIGINT,"
             << "filesize INTEGER,"
             << "FOREIGN KEY(srcStorageElementId) REFERENCES StorageElements(id),"
             << "FOREIGN KEY(dstStorageElementId) REFERENCES StorageElements(id)";

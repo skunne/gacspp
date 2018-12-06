@@ -37,6 +37,8 @@ results/
 *.png
 *.dat
 *.csv
+*.db
+*.log
 
 # Windows specific
 .vs
