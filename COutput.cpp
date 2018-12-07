@@ -114,16 +114,31 @@ void COutput::QueueStatement(IConcreteStatement* statement)
 
 void COutput::ConsumerThread()
 {
-    while(mIsConsumerRunning)
+    bool hasTransactionBegun = false;
+    std::size_t numInsertionsPerTransaction = 0;
+    while(mIsConsumerRunning || (mConsumerIdx != mProducerIdx))
     {
         while(mConsumerIdx != mProducerIdx)
         {
+            if(!hasTransactionBegun)
+            {
+                sqlite3_exec(mDB, "BEGIN TRANSACTION", nullptr, nullptr, nullptr);
+                hasTransactionBegun = true;
+            }
             std::unique_ptr<IConcreteStatement> statement = std::move(mStatementBuffer[mConsumerIdx]);
             mConsumerIdx = (mConsumerIdx + 1) % OUTPUT_BUF_SIZE;
             assert(statement != nullptr);
             auto sqlStmt = mPreparedStatements[statement->GetPreparedStatementIdx()];
-            statement->BindAndExecute(sqlStmt);
+            numInsertionsPerTransaction += statement->BindAndExecute(sqlStmt);
+            if(numInsertionsPerTransaction > 20000)
+            {
+                sqlite3_exec(mDB, "END TRANSACTION", nullptr, nullptr, nullptr);
+                numInsertionsPerTransaction = 0;
+                hasTransactionBegun = false;
+            }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+    if(hasTransactionBegun)
+        sqlite3_exec(mDB, "END TRANSACTION", nullptr, nullptr, nullptr);
 }

@@ -43,7 +43,7 @@ public:
         assert(!mValues.empty());
     }
 
-    bool BindAndExecute(sqlite3_stmt* const stmt) final
+    std::size_t BindAndExecute(sqlite3_stmt* const stmt) final
     {
         for(const std::unique_ptr<SValue>& value : mValues)
         {
@@ -54,8 +54,10 @@ public:
             sqlite3_bind_int64(stmt, 5, value->mEndTick);
             sqlite3_bind_int(stmt, 6, value->mFileSize);
             sqlite3_step(stmt);
+            sqlite3_clear_bindings(stmt);
+            sqlite3_reset(stmt);
         }
-        return true;
+        return mValues.size();
     }
 
 private:
@@ -612,13 +614,13 @@ void CSimpleSim::SetupDefaults()
     std::stringstream columns;
     bool ok = false;
 
-    ok = output.CreateTable("Sites", "id INTEGER PRIMARY KEY, name varchar(64), locationName varchar(64)");
+    ok = output.CreateTable("Sites", "id BIGINT PRIMARY KEY, name varchar(64), locationName varchar(64)");
     assert(ok);
 
-    ok = output.CreateTable("StorageElements", "id BIGINT PRIMARY KEY, siteId INTEGER, name varchar(64), FOREIGN KEY(siteId) REFERENCES Sites(id)");
+    ok = output.CreateTable("StorageElements", "id BIGINT PRIMARY KEY, siteId BIGINT, name varchar(64), FOREIGN KEY(siteId) REFERENCES Sites(id)");
     assert(ok);
 
-    ok = output.CreateTable("LinkSelectors", "id INTEGER PRIMARY KEY, srcSiteId INTEGER, dstSiteId INTEGER, FOREIGN KEY(srcSiteId) REFERENCES Sites(id), FOREIGN KEY(dstSiteId) REFERENCES Sites(id)");
+    ok = output.CreateTable("LinkSelectors", "id BIGINT PRIMARY KEY, srcSiteId BIGINT, dstSiteId BIGINT, FOREIGN KEY(srcSiteId) REFERENCES Sites(id), FOREIGN KEY(dstSiteId) REFERENCES Sites(id)");
     assert(ok);
 
     columns << "id BIGINT PRIMARY KEY,"

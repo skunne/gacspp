@@ -22,7 +22,7 @@ public:
     inline auto GetPreparedStatementIdx() const -> std::size_t
     {return mPreparedStatementIdx;}
 
-    virtual bool BindAndExecute(sqlite3_stmt* const stmt) = 0;
+    virtual std::size_t BindAndExecute(sqlite3_stmt* const stmt) = 0;
 };
 
 class COutput
