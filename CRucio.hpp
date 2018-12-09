@@ -1,13 +1,11 @@
 #pragma once
 
-#include <cstdint>
 #include <memory>
-#include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "constants.h"
-#include "IBaseSim.hpp"
 
 class ISite;
 class CStorageElement;
@@ -56,16 +54,16 @@ private:
 public:
 	std::vector<std::unique_ptr<SReplica>> mReplicas;
 
-    IBaseSim::TickType mExpiresAt;
+    TickType mExpiresAt;
 
-    SFile(const std::uint32_t size, const IBaseSim::TickType expiresAt);
+    SFile(const std::uint32_t size, const TickType expiresAt);
     SFile(SFile&&) = default;
     SFile& operator=(SFile&&) = default;
 
     SFile(SFile const&) = delete;
     SFile& operator=(SFile const&) = delete;
 
-	void Remove(const IBaseSim::TickType now);
+	void Remove(const TickType now);
 
     inline auto GetId() const -> IdType
     {return mId;}
@@ -92,8 +90,8 @@ public:
     SReplica(SReplica const&) = delete;
     SReplica& operator=(SReplica const&) = delete;
 
-    auto Increase(std::uint32_t amount, const IBaseSim::TickType now) -> std::uint32_t;
-	void Remove(const IBaseSim::TickType now);
+    auto Increase(std::uint32_t amount, const TickType now) -> std::uint32_t;
+	void Remove(const TickType now);
 
 	bool IsComplete() const
 	{return mCurSize == mFile->GetSize();}
@@ -131,8 +129,8 @@ public:
 
 	auto CreateReplica(SFile* file) -> SReplica*;
 
-    virtual void OnIncreaseReplica(const std::uint64_t amount, const IBaseSim::TickType now);
-    virtual void OnRemoveReplica(const SReplica* replica, const IBaseSim::TickType now);
+    virtual void OnIncreaseReplica(const std::uint64_t amount, const TickType now);
+    virtual void OnRemoveReplica(const SReplica* replica, const TickType now);
 
 	inline auto GetId() const -> IdType
 	{return mId;}
@@ -205,7 +203,7 @@ public:
     std::vector<std::unique_ptr<CGridSite>> mGridSites;
 
     CRucio();
-    auto CreateFile(const std::uint32_t size, const IBaseSim::TickType expiresAt) -> SFile*;
+    auto CreateFile(const std::uint32_t size, const TickType expiresAt) -> SFile*;
     auto CreateGridSite(std::string&& name, std::string&& locationName) -> CGridSite*;
-    auto RunReaper(const IBaseSim::TickType now) -> std::size_t;
+    auto RunReaper(const TickType now) -> std::size_t;
 };

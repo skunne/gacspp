@@ -4,14 +4,14 @@
 #include "CRucio.hpp"
 
 
-SFile::SFile(const std::uint32_t size, const IBaseSim::TickType expiresAt)
+SFile::SFile(const std::uint32_t size, const TickType expiresAt)
     : mId(GetNewId()),
       mSize(size),
       mExpiresAt(expiresAt)
 {
     mReplicas.reserve(8);
 }
-void SFile::Remove(const IBaseSim::TickType now)
+void SFile::Remove(const TickType now)
 {
     for(auto& replica : mReplicas)
         replica->Remove(now);
@@ -23,7 +23,7 @@ SReplica::SReplica(SFile* const file, CStorageElement* const storageElement, con
       mStorageElement(storageElement),
       mIndexAtStorageElement(indexAtStorageElement)
 {}
-auto SReplica::Increase(std::uint32_t amount, const IBaseSim::TickType now) -> std::uint32_t
+auto SReplica::Increase(std::uint32_t amount, const TickType now) -> std::uint32_t
 {
     const std::uint32_t maxSize = mFile->GetSize();
     std::uint64_t newSize = mCurSize;
@@ -37,7 +37,7 @@ auto SReplica::Increase(std::uint32_t amount, const IBaseSim::TickType now) -> s
     mStorageElement->OnIncreaseReplica(amount, now);
     return amount;
 }
-void SReplica::Remove(const IBaseSim::TickType now)
+void SReplica::Remove(const TickType now)
 {
     if(mTransferRef)
         (*mTransferRef) = nullptr;
@@ -104,12 +104,12 @@ auto CStorageElement::CreateReplica(SFile* const file) -> SReplica*
     return newReplica;
 }
 
-void CStorageElement::OnIncreaseReplica(const std::uint64_t amount, const IBaseSim::TickType now)
+void CStorageElement::OnIncreaseReplica(const std::uint64_t amount, const TickType now)
 {
     mUsedStorage += amount;
 }
 
-void CStorageElement::OnRemoveReplica(const SReplica* const replica, const IBaseSim::TickType now)
+void CStorageElement::OnRemoveReplica(const SReplica* const replica, const TickType now)
 {
     const auto FileIdIterator = mFileIds.find(replica->GetFile()->GetId());
     const std::size_t idxToDelete = replica->mIndexAtStorageElement;
@@ -138,7 +138,7 @@ CRucio::CRucio()
 {
     mFiles.reserve(150000);
 }
-auto CRucio::CreateFile(const std::uint32_t size, const IBaseSim::TickType expiresAt) -> SFile*
+auto CRucio::CreateFile(const std::uint32_t size, const TickType expiresAt) -> SFile*
 {
     SFile* newFile = new SFile(size, expiresAt);
     mFiles.emplace_back(newFile);
@@ -150,7 +150,7 @@ auto CRucio::CreateGridSite(std::string&& name, std::string&& locationName) -> C
     mGridSites.emplace_back(newSite);
     return newSite;
 }
-auto CRucio::RunReaper(const IBaseSim::TickType now) -> std::size_t
+auto CRucio::RunReaper(const TickType now) -> std::size_t
 {
     const std::size_t numFiles = mFiles.size();
 

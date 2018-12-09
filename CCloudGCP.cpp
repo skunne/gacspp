@@ -2,7 +2,6 @@
 #include <iomanip>
 #include <unordered_map>
 
-#include "constants.h"
 #include "CCloudGCP.hpp"
 
 namespace gcp
@@ -13,25 +12,25 @@ namespace gcp
 	{
 		mBucketEvents.reserve(32768);
 	}
-	void CBucket::OnIncreaseReplica(std::uint64_t amount, std::uint64_t now)
+	void CBucket::OnIncreaseReplica(std::uint64_t amount, TickType now)
 	{
 		mBucketEvents.emplace_back(now, amount);
 		CStorageElement::OnIncreaseReplica(amount, now);
 	}
-	void CBucket::OnRemoveReplica(const SReplica* replica, std::uint64_t now)
+	void CBucket::OnRemoveReplica(const SReplica* replica, TickType now)
 	{
 		mBucketEvents.emplace_back(now, -(static_cast<std::int64_t>(replica->GetCurSize())));
 		CStorageElement::OnRemoveReplica(replica, now);
 	}
 
-	double CBucket::CalculateStorageCosts(std::uint64_t now)
+	double CBucket::CalculateStorageCosts(TickType now)
 	{
 		const CRegion* const region = dynamic_cast<CRegion*>(mSite);
 		assert(region);
 		const double price = region->GetStoragePrice();
 		double costs = 0;
-		std::uint64_t timeOffset = mTimeAtLastReset;
-		std::uint64_t usedStorageAtGivenTime = mStorageAtLastReset;
+        TickType timeOffset = mTimeAtLastReset;
+        TickType usedStorageAtGivenTime = mStorageAtLastReset;
 		mBucketEvents.emplace_back(now, 0);
 		for (const auto &storageEvent : mBucketEvents)
 		{
@@ -78,14 +77,14 @@ namespace gcp
 		mStorageElements.emplace_back(newBucket);
 		return newBucket;
 	}
-	double CRegion::CalculateStorageCosts(std::uint64_t now)
+	double CRegion::CalculateStorageCosts(TickType now)
 	{
 		double regionStorageCosts = 0;
 		for (auto& bucket : mStorageElements)
 			regionStorageCosts += bucket->CalculateStorageCosts(now);
 		return regionStorageCosts;
 	}
-	double CRegion::CalculateNetworkCosts(std::uint64_t now, double& sumUsedTraffic, std::uint64_t& sumDoneTransfers)
+	double CRegion::CalculateNetworkCosts(TickType now, double& sumUsedTraffic, std::uint64_t& sumDoneTransfers)
 	{
 		double regionNetworkCosts = 0;
 		for (auto& linkSelector : mLinkSelectors)
@@ -116,7 +115,7 @@ namespace gcp
 
 
 
-	auto CCloud::ProcessBilling(std::uint64_t now) -> std::pair<double, std::pair<double, double>>
+	auto CCloud::ProcessBilling(TickType now) -> std::pair<double, std::pair<double, double>>
 	{
 		/*
 		for transfer in self.transfer_list:

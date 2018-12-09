@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -28,7 +29,7 @@ public:
 class COutput
 {
 private:
-    COutput(){}
+    COutput() = default;
 
     std::atomic_bool mIsConsumerRunning = false;
     std::thread mConsumerThread;

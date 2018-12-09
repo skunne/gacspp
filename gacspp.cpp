@@ -1,7 +1,9 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <sstream>
 
+#include "constants.h"
 #include "CCloudGCP.hpp"
 #include "COutput.hpp"
 #include "CSimpleSim.hpp"
@@ -18,10 +20,10 @@ int main(int argc, char** argv)
             return 1;
     }
 
-    IBaseSim::TickType maxTick = 3600 * 24 * 30;
+    TickType maxTick = 3600 * 24 * 30;
     if(argc>1)
     {
-        maxTick = 3600 * 24 * static_cast<IBaseSim::TickType>(std::stoul(argv[1]));
+        maxTick = 3600 * 24 * static_cast<TickType>(std::stoul(argv[1]));
         std::cout<<"MaxTick="<<maxTick<<std::endl;
     }
     std::unique_ptr<CSimpleSim> sim(new CSimpleSim);

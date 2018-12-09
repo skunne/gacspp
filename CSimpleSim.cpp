@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
-#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -29,11 +28,11 @@ public:
     struct SValue
     {
         IdType mTransferId;
+        IdType mFileId;
         IdType mSrcStorageElementId;
         IdType mDstStorageElementId;
-        IBaseSim::TickType mStartTick;
-        IBaseSim::TickType mEndTick;
-        std::uint32_t mFileSize;
+        TickType mStartTick;
+        TickType mEndTick;
     };
 
     CTransferInsertStatement(std::vector<std::unique_ptr<SValue>>&& values, std::size_t preparedStatementIdx)
@@ -48,11 +47,47 @@ public:
         for(const std::unique_ptr<SValue>& value : mValues)
         {
             sqlite3_bind_int64(stmt, 1, value->mTransferId);
-            sqlite3_bind_int64(stmt, 2, value->mSrcStorageElementId);
-            sqlite3_bind_int64(stmt, 3, value->mDstStorageElementId);
-            sqlite3_bind_int64(stmt, 4, value->mStartTick);
-            sqlite3_bind_int64(stmt, 5, value->mEndTick);
-            sqlite3_bind_int(stmt, 6, value->mFileSize);
+            sqlite3_bind_int64(stmt, 2, value->mFileId);
+            sqlite3_bind_int64(stmt, 3, value->mSrcStorageElementId);
+            sqlite3_bind_int64(stmt, 4, value->mDstStorageElementId);
+            sqlite3_bind_int64(stmt, 5, value->mStartTick);
+            sqlite3_bind_int64(stmt, 6, value->mEndTick);
+            sqlite3_step(stmt);
+            sqlite3_clear_bindings(stmt);
+            sqlite3_reset(stmt);
+        }
+        return mValues.size();
+    }
+
+private:
+    std::vector<std::unique_ptr<SValue>> mValues;
+};
+class CFileInsertStatement : public IConcreteStatement
+{
+public:
+    struct SValue
+    {
+        IdType mFileId;
+        TickType mCreatedAt;
+        TickType mLifetime;
+        std::uint32_t mFileSize;
+    };
+
+    CFileInsertStatement(std::vector<std::unique_ptr<SValue>>&& values, std::size_t preparedStatementIdx)
+        : IConcreteStatement(preparedStatementIdx),
+        mValues(std::move(values))
+    {
+        assert(!mValues.empty());
+    }
+
+    std::size_t BindAndExecute(sqlite3_stmt* const stmt) final
+    {
+        for (const std::unique_ptr<SValue>& value : mValues)
+        {
+            sqlite3_bind_int64(stmt, 1, value->mFileId);
+            sqlite3_bind_int64(stmt, 2, value->mFileSize);
+            sqlite3_bind_int64(stmt, 3, value->mCreatedAt);
+            sqlite3_bind_int64(stmt, 4, value->mLifetime);
             sqlite3_step(stmt);
             sqlite3_clear_bindings(stmt);
             sqlite3_reset(stmt);
@@ -64,10 +99,11 @@ private:
     std::vector<std::unique_ptr<SValue>> mValues;
 };
 
-
 class CDataGenerator : public CScheduleable
 {
 private:
+    std::size_t mOutputQueryIdx;
+
     IBaseSim* mSim;
 
     std::normal_distribution<float> mNumFilesRNG {40, 1};
@@ -87,13 +123,13 @@ private:
     {
         return static_cast<std::uint32_t>( std::max(1.f, mNumFilesRNG(mSim->mRNGEngine)) );
     }
-    inline std::uint64_t GetRandomLifeTime()
+    inline TickType GetRandomLifeTime()
     {
         float val = DAYS_TO_SECONDS(std::abs(mFileLifetimeRNG(mSim->mRNGEngine)));
-        return static_cast<std::uint64_t>( std::max(float(SECONDS_PER_DAY), val) );
+        return static_cast<TickType>( std::max(float(SECONDS_PER_DAY), val) );
     }
 
-    std::uint64_t CreateFilesAndReplicas(const std::uint32_t numFiles, const std::uint32_t numReplicasPerFile, const std::uint64_t now)
+    std::uint64_t CreateFilesAndReplicas(const std::uint32_t numFiles, const std::uint32_t numReplicasPerFile, const TickType now)
     {
         if(numFiles == 0 || numReplicasPerFile == 0)
             return 0;
@@ -102,14 +138,16 @@ private:
 
         assert(numReplicasPerFile <= numStorageElements);
 
+        std::vector<std::unique_ptr<CFileInsertStatement::SValue>> outputEvents;
         std::uniform_int_distribution<std::uint32_t> rngSampler(0, numStorageElements);
         std::uint64_t bytesOfFilesGen = 0;
         for(std::uint32_t i = 0; i < numFiles; ++i)
         {
             const std::uint32_t fileSize = GetRandomFileSize();
-            const std::uint64_t expiresAt = now + GetRandomLifeTime();
+            const TickType lifetime = GetRandomLifeTime();
 
-            SFile* const file = mSim->mRucio->CreateFile(fileSize, expiresAt);
+            SFile* const file = mSim->mRucio->CreateFile(fileSize, now + lifetime);
+            outputEvents.emplace_back(new CFileInsertStatement::SValue{ file->GetId(), now, lifetime, fileSize });
             bytesOfFilesGen += fileSize;
 
             auto reverseRSEIt = mStorageElements.rbegin();
@@ -122,18 +160,21 @@ private:
 				++reverseRSEIt;
             }
         }
+        COutput::GetRef().QueueStatement(new CFileInsertStatement(std::move(outputEvents), mOutputQueryIdx));
         return bytesOfFilesGen;
     }
 
 public:
     std::vector<CStorageElement*> mStorageElements;
-    CDataGenerator(IBaseSim* sim, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
+    CDataGenerator(IBaseSim* sim, const std::uint32_t tickFreq, const TickType startTick=0)
         : CScheduleable(startTick),
           mSim(sim),
           mTickFreq(tickFreq)
-    {}
+    {
+        mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Files VALUES(?, ?, ?, ?);");
+    }
 
-    void OnUpdate(const CScheduleable::TickType now) final
+    void OnUpdate(const TickType now) final
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
         const std::uint32_t totalFilesToGen = GetRandomNumFilesToGenerate();
@@ -157,13 +198,13 @@ private:
     std::uint32_t mTickFreq;
 
 public:
-    CReaper(CRucio *rucio, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=600)
+    CReaper(CRucio *rucio, const std::uint32_t tickFreq, const TickType startTick=600)
         : CScheduleable(startTick),
           mRucio(rucio),
           mTickFreq(tickFreq)
     {}
 
-    void OnUpdate(const CScheduleable::TickType now) final
+    void OnUpdate(const TickType now) final
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
         mRucio->RunReaper(now);
@@ -181,13 +222,13 @@ private:
     std::uint32_t mTickFreq;
 
 public:
-    CBillingGenerator(IBaseSim* sim, const std::uint32_t tickFreq=SECONDS_PER_MONTH, const CScheduleable::TickType startTick=SECONDS_PER_MONTH)
+    CBillingGenerator(IBaseSim* sim, const std::uint32_t tickFreq=SECONDS_PER_MONTH, const TickType startTick=SECONDS_PER_MONTH)
         : CScheduleable(startTick),
           mSim(sim),
           mTickFreq(tickFreq)
     {}
 
-    void OnUpdate(const CScheduleable::TickType now) final
+    void OnUpdate(const TickType now) final
     {
         const std::string caption = std::string(10, '=') + " Monthly Summary " + std::string(10, '=');
         std::cout << std::endl;
@@ -230,16 +271,16 @@ class CTransferManager : public CScheduleable
 private:
     std::size_t mOutputQueryIdx;
 
-    CScheduleable::TickType mLastUpdated = 0;
+    TickType mLastUpdated = 0;
     std::uint32_t mTickFreq;
 
     struct STransfer
     {
         CLinkSelector* mLinkSelector;
         SReplica* mDstReplica;
-        CScheduleable::TickType mStartTick;
+        TickType mStartTick;
 
-        STransfer(CLinkSelector* linkSelector, SReplica* dstReplica, CScheduleable::TickType startTick)
+        STransfer(CLinkSelector* linkSelector, SReplica* dstReplica, TickType startTick)
             : mLinkSelector(linkSelector),
               mDstReplica(dstReplica),
               mStartTick(startTick)
@@ -264,8 +305,8 @@ public:
     //std::ofstream mTransferLog;
     //std::ofstream mTrafficLog;
     std::uint32_t mNumCompletedTransfers = 0;
-    std::uint64_t mSummedTransferDuration = 0;
-    CTransferManager(const std::string& transferLogFilePath, const std::string& trafficLogFilePath, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
+    TickType mSummedTransferDuration = 0;
+    CTransferManager(const std::string& transferLogFilePath, const std::string& trafficLogFilePath, const std::uint32_t tickFreq, const TickType startTick=0)
         : CScheduleable(startTick),
           mTickFreq(tickFreq)//,
           //mTransferLog(transferLogFilePath),
@@ -275,21 +316,21 @@ public:
         mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?, ?);");
     }
 
-    void CreateTransfer(CLinkSelector* const linkSelector, SReplica* const dstReplica, const CScheduleable::TickType now)
+    void CreateTransfer(CLinkSelector* const linkSelector, SReplica* const dstReplica, const TickType now)
     {
         assert(mActiveTransfers.size() < mActiveTransfers.capacity());
         linkSelector->mNumActiveTransfers += 1;
         mActiveTransfers.emplace_back(linkSelector, dstReplica, now);
         dstReplica->mTransferRef = &(mActiveTransfers.back().mDstReplica);
     }
-    void CreateTransfer(CStorageElement* const srcStorageElement, SReplica* const dstReplica, const CScheduleable::TickType now)
+    void CreateTransfer(CStorageElement* const srcStorageElement, SReplica* const dstReplica, const TickType now)
     {
         CStorageElement* dstStorageElement = dstReplica->GetStorageElement();
         CLinkSelector* linkSelector = srcStorageElement->GetSite()->GetLinkSelector(dstStorageElement->GetSite());
         CreateTransfer(linkSelector, dstReplica, now);
     }
 
-    void OnUpdate(const CScheduleable::TickType now) final
+    void OnUpdate(const TickType now) final
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
         //mTransferLog << 0 << "|" << now << "|" << mActiveTransfers.size() << "|";
@@ -319,7 +360,13 @@ public:
 
             if(dstReplica->IsComplete())
             {
-                outputEvents.emplace_back(new CTransferInsertStatement::SValue{GetNewId(), 0, dstReplica->GetStorageElement()->GetId(), transfer.mStartTick, now, dstReplica->GetFile()->GetSize()});
+                outputEvents.emplace_back(new CTransferInsertStatement::SValue{
+                    GetNewId(),
+                    dstReplica->GetFile()->GetId(),
+                    0,
+                    dstReplica->GetStorageElement()->GetId(),
+                    transfer.mStartTick,
+                    now});
                 ++linkSelector->mDoneTransfers;
                 ++mNumCompletedTransfers;
                 mSummedTransferDuration += now - transfer.mStartTick;
@@ -358,7 +405,7 @@ public:
       mAlpha(1.0/samplingFreq * PI/180.0 * baseFreq)
     {}
 
-    inline std::uint32_t GetNumToCreate(IBaseSim::RNGEngineType& rngEngine, std::uint32_t numActive, const CScheduleable::TickType now)
+    inline std::uint32_t GetNumToCreate(IBaseSim::RNGEngineType& rngEngine, std::uint32_t numActive, const TickType now)
     {
         const double softmax = (std::cos(now * mAlpha) * mSoftmaxScale + mSoftmaxOffset) * (1.0 + mSoftmaxRNG(rngEngine) * 0.02);
         const double diffSoftmaxActive = softmax - numActive;
@@ -381,7 +428,7 @@ public:
     std::vector<CStorageElement*> mSrcStorageElements;
     std::vector<CStorageElement*> mDstStorageElements;
 
-    CTransferGeneratorUniform(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
+    CTransferGeneratorUniform(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const TickType startTick=0)
         : CScheduleable(startTick),
           mSim(sim),
           mTransferMgr(transferMgr),
@@ -389,7 +436,7 @@ public:
           mTransferNumberGen(new CTransferNumberGenerator(1, 1, tickFreq, 0.075))
     {}
 
-    void OnUpdate(const CScheduleable::TickType now) final
+    void OnUpdate(const TickType now) final
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
         assert(mSrcStorageElements.size() > 0);
@@ -446,7 +493,7 @@ public:
     std::vector<CStorageElement*> mSrcStorageElements;
     std::vector<CStorageElement*> mDstStorageElements;
 
-    CTransferGeneratorExponential(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
+    CTransferGeneratorExponential(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const TickType startTick=0)
         : CScheduleable(startTick),
           mSim(sim),
           mTransferMgr(transferMgr),
@@ -454,7 +501,7 @@ public:
           mTransferNumberGen(new CTransferNumberGenerator(1, 1, tickFreq, 0.075))
     {}
 
-    void OnUpdate(const CScheduleable::TickType now) final
+    void OnUpdate(const TickType now) final
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
 
@@ -522,7 +569,7 @@ private:
 public:
     std::unordered_map<std::string, std::chrono::duration<double>*> mProccessDurations;
 
-    CHearbeat(IBaseSim* sim, std::shared_ptr<CTransferManager> g2cTransferMgr, std::shared_ptr<CTransferManager> c2cTransferMgr, const std::uint32_t tickFreq, const CScheduleable::TickType startTick=0)
+    CHearbeat(IBaseSim* sim, std::shared_ptr<CTransferManager> g2cTransferMgr, std::shared_ptr<CTransferManager> c2cTransferMgr, const std::uint32_t tickFreq, const TickType startTick=0)
         : CScheduleable(startTick),
           mSim(sim),
           mG2CTransferMgr(g2cTransferMgr),
@@ -533,7 +580,7 @@ public:
     }
 
 
-    void OnUpdate(const CScheduleable::TickType now) final
+    void OnUpdate(const TickType now) final
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> timeDiff = curRealtime - mTimeLastUpdate;
@@ -623,12 +670,16 @@ void CSimpleSim::SetupDefaults()
     ok = output.CreateTable("LinkSelectors", "id BIGINT PRIMARY KEY, srcSiteId BIGINT, dstSiteId BIGINT, FOREIGN KEY(srcSiteId) REFERENCES Sites(id), FOREIGN KEY(dstSiteId) REFERENCES Sites(id)");
     assert(ok);
 
+    ok = output.CreateTable("Files", "id BIGINT PRIMARY KEY, createdAt BIGINT, lifetime BIGINT, filesize INTEGER");
+    assert(ok);
+
     columns << "id BIGINT PRIMARY KEY,"
+            << "fileId BIGINT,"
             << "srcStorageElementId BIGINT,"
             << "dstStorageElementId BIGINT,"
             << "startTick BIGINT,"
             << "endTick BIGINT,"
-            << "filesize INTEGER,"
+            << "FOREIGN KEY(fileId) REFERENCES Files(id),"
             << "FOREIGN KEY(srcStorageElementId) REFERENCES StorageElements(id),"
             << "FOREIGN KEY(dstStorageElementId) REFERENCES StorageElements(id)";
     ok = output.CreateTable("Transfers", columns.str());

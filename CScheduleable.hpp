@@ -1,17 +1,15 @@
 #pragma once
 
 #include <chrono>
-#include <cstdint>
 #include <memory>
 #include <queue>
 #include <vector>
 
+#include "constants.h"
 
 class CScheduleable
 {
 public:
-    typedef std::uint64_t TickType;
-
     std::chrono::duration<double> mUpdateDurationSummed = std::chrono::duration<double>::zero();
     TickType mNextCallTick;
 

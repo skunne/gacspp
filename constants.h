@@ -1,6 +1,6 @@
-
 #pragma once
 
+#include <cstdint>
 
 #define PI (3.14159265359)
 
@@ -14,6 +14,7 @@
 #define SECONDS_TO_MONTHS(x) ((x)/SECONDS_PER_MONTH)
 #define DAYS_TO_SECONDS(x) ((x) * SECONDS_PER_DAY)
 
+typedef std::uint64_t TickType;
 typedef std::uint64_t IdType;
 inline IdType GetNewId()
 {
