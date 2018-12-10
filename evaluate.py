@@ -14,7 +14,7 @@ def NullPlot(*args):
 
 
 def PlotTransferMgr(filePath, plotOutputFilePath=None):
-    plt.figure(num=filePath, figsize=(40.96, 21.60), dpi=100)
+    plt.figure(num=filePath, figsize=(25, 10), dpi=200)
     plt.ticklabel_format(axis='both', style='plain')
     plt.grid(axis='y')
     with open(filePath, 'r') as infile:
@@ -38,7 +38,7 @@ def PlotTransferMgr(filePath, plotOutputFilePath=None):
 
 
 def PlotBilling(filePath, plotOutputFilePath=None):
-    plt.figure(num=filePath, figsize=(40.96, 21.60), dpi=100)
+    plt.figure(num=filePath, figsize=(25, 10), dpi=200)
     plt.ticklabel_format(axis='both', style='plain')
     plt.grid(axis='y')
     bucketsById = {}
@@ -73,10 +73,11 @@ def PlotBilling(filePath, plotOutputFilePath=None):
 
 
 def PlotTrafficDiff(simFilePath, refFilePath, startingSecond, plotOutputFilePath=None):
-    plt.figure(num=simFilePath, figsize=(40.96, 21.60), dpi=100)
+    plt.figure(num=simFilePath, figsize=(25, 10), dpi=200)
     plt.ticklabel_format(axis='both', style='plain')
     plt.grid(axis='y')
 
+    scale = 2**30
     with open(simFilePath, 'r') as infile:
         data = infile.read().split('|')
     data.pop()
@@ -90,28 +91,28 @@ def PlotTrafficDiff(simFilePath, refFilePath, startingSecond, plotOutputFilePath
         if now  >= intervalEnd:
             simY.append(simY[-1])
             intervalEnd += 3600*3
-        simY[-1] += int(data[idx+1])
+        simY[-1] += int(int(data[idx+1]) / scale)
 
     plt.plot(range(0, intervalEnd-startingSecond, 3600*3), simY, label='SummedSimTraffic')
 
     refX = [0]
     refY = []
     with open(refFilePath, 'r') as infile:
-        line = infile.readline()
+        # dump first line
         data = infile.readline()
         data = infile.readline().strip().split(',')
         baseX = int(int(data[0]) / 1000)
-        refY.append(int(data[1]))
+        refY.append(int(data[1]) / scale)
         for line in infile.readlines():
             data = line.strip().split(',')
             x = int(int(data[0]) / 1000)
             refX.append(x - baseX)
-            refY.append(int(data[1]))
+            refY.append(int(int(data[1]) / scale))
     print('lenData={}'.format(len(refY)))
     plt.plot(refX, refY, label='SummedRefTraffic')
 
     plt.xlabel('Sim Time')
-    plt.ylabel('Sum of transferred bytes')
+    plt.ylabel('Sum of transferred bytes/GiB')
     plt.legend()
     plt.axis(xmin=0, ymin=0)
     if plotOutputFilePath:
