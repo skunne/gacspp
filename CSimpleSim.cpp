@@ -276,13 +276,15 @@ private:
 
     struct STransfer
     {
-        CLinkSelector* mLinkSelector;
+        SReplica* mSrcReplica;
         SReplica* mDstReplica;
+        CLinkSelector* mLinkSelector;
         TickType mStartTick;
 
-        STransfer(CLinkSelector* linkSelector, SReplica* dstReplica, TickType startTick)
-            : mLinkSelector(linkSelector),
+        STransfer(SReplica* const srcReplica, SReplica* const dstReplica, CLinkSelector* const linkSelector, TickType startTick)
+            : mSrcReplica(srcReplica),
               mDstReplica(dstReplica),
+              mLinkSelector(linkSelector),
               mStartTick(startTick)
         {}
     };
@@ -291,7 +293,7 @@ private:
     {
         auto& transfer = mActiveTransfers[idx];
         do {
-            --(transfer.mLinkSelector->mNumActiveTransfers);
+            transfer.mLinkSelector->mNumActiveTransfers -= 1;
             transfer = std::move(mActiveTransfers.back());
             mActiveTransfers.pop_back();
         } while (transfer.mDstReplica == nullptr && !mActiveTransfers.empty());
@@ -316,18 +318,17 @@ public:
         mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?, ?);");
     }
 
-    void CreateTransfer(CLinkSelector* const linkSelector, SReplica* const dstReplica, const TickType now)
+    void CreateTransfer(SReplica* const srcReplica, SReplica* const dstReplica, const TickType now)
     {
         assert(mActiveTransfers.size() < mActiveTransfers.capacity());
+
+        ISite* const srcSite = srcReplica->GetStorageElement()->GetSite();
+        ISite* const dstSite = dstReplica->GetStorageElement()->GetSite();
+        CLinkSelector* const linkSelector = srcSite->GetLinkSelector(dstSite);
+
         linkSelector->mNumActiveTransfers += 1;
-        mActiveTransfers.emplace_back(linkSelector, dstReplica, now);
+        mActiveTransfers.emplace_back(srcReplica, dstReplica, linkSelector, now);
         dstReplica->mTransferRef = &(mActiveTransfers.back().mDstReplica);
-    }
-    void CreateTransfer(CStorageElement* const srcStorageElement, SReplica* const dstReplica, const TickType now)
-    {
-        CStorageElement* dstStorageElement = dstReplica->GetStorageElement();
-        CLinkSelector* linkSelector = srcStorageElement->GetSite()->GetLinkSelector(dstStorageElement->GetSite());
-        CreateTransfer(linkSelector, dstReplica, now);
     }
 
     void OnUpdate(const TickType now) final
@@ -342,7 +343,7 @@ public:
         std::vector<std::unique_ptr<CTransferInsertStatement::SValue>> outputEvents;
         while (idx < mActiveTransfers.size())
         {
-            auto& transfer = mActiveTransfers[idx];
+            STransfer& transfer = mActiveTransfers[idx];
             SReplica* const dstReplica = transfer.mDstReplica;
             CLinkSelector* const linkSelector = transfer.mLinkSelector;
             if (dstReplica == nullptr)
@@ -363,7 +364,7 @@ public:
                 outputEvents.emplace_back(new CTransferInsertStatement::SValue{
                     GetNewId(),
                     dstReplica->GetFile()->GetId(),
-                    0,
+                    transfer.mSrcReplica->GetStorageElement()->GetId(),
                     dstReplica->GetStorageElement()->GetId(),
                     transfer.mStartTick,
                     now});
@@ -446,7 +447,7 @@ public:
         const std::uint32_t numToCreatePerRSE = static_cast<std::uint32_t>( numToCreate/static_cast<double>(mSrcStorageElements.size()) );
         std::uint32_t totalTransfersCreated = 0;
         std::uniform_int_distribution<std::size_t> dstStorageElementRndChooser(0, mDstStorageElements.size()-1);
-        for(auto& srcStorageElement : mSrcStorageElements)
+        for(CStorageElement* srcStorageElement : mSrcStorageElements)
         {
             std::uint32_t numCreated = 0;
             std::size_t numSrcReplicas = srcStorageElement->mReplicas.size();
@@ -456,18 +457,18 @@ public:
                 const std::size_t idx = rngSampler(rngEngine) % numSrcReplicas;
                 --numSrcReplicas;
 
-                auto& curReplica = srcStorageElement->mReplicas[idx];
+                SReplica*& curReplica = srcStorageElement->mReplicas[idx];
                 if(curReplica->IsComplete())
                 {
                     CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(rngEngine)];
                     SReplica* const newReplica = dstStorageElement->CreateReplica(curReplica->GetFile());
                     if(newReplica != nullptr)
                     {
-                        mTransferMgr->CreateTransfer(srcStorageElement, newReplica, now);
+                        mTransferMgr->CreateTransfer(curReplica, newReplica, now);
                         ++numCreated;
                     }
                 }
-                auto& lastReplica = srcStorageElement->mReplicas[numSrcReplicas];
+                SReplica*& lastReplica = srcStorageElement->mReplicas[numSrcReplicas];
                 std::swap(curReplica->mIndexAtStorageElement, lastReplica->mIndexAtStorageElement);
                 std::swap(curReplica, lastReplica);
             }
@@ -519,28 +520,28 @@ public:
 
         for(totalTransfersCreated=0; totalTransfersCreated<numToCreate; ++totalTransfersCreated)
         {
-            auto& dstStorageElement = mDstStorageElements[static_cast<std::size_t>(dstStorageElementRndSelecter(rngEngine) * 2) % numDstStorageElements];
+            CStorageElement* const dstStorageElement = mDstStorageElements[static_cast<std::size_t>(dstStorageElementRndSelecter(rngEngine) * 2) % numDstStorageElements];
             bool wasTransferCreated = false;
             for(std::size_t numSrcStorageElementsTried = 0; numSrcStorageElementsTried < numSrcStorageElements; ++numSrcStorageElementsTried)
             {
                 std::uniform_int_distribution<std::size_t> srcStorageElementRndSelecter(numSrcStorageElementsTried, numSrcStorageElements - 1);
-                auto& srcStorageElement = mSrcStorageElements[srcStorageElementRndSelecter(rngEngine)];
+                CStorageElement* srcStorageElement = mSrcStorageElements[srcStorageElementRndSelecter(rngEngine)];
                 const std::size_t numSrcReplicas = srcStorageElement->mReplicas.size();
                 for(std::size_t numSrcReplciasTried = 0; numSrcReplciasTried < numSrcReplicas; ++numSrcReplciasTried)
                 {
                     std::uniform_int_distribution<std::size_t> srcReplicaRndSelecter(numSrcReplciasTried, numSrcReplicas - 1);
-                    auto& curReplica = srcStorageElement->mReplicas[srcReplicaRndSelecter(rngEngine)];
+                    SReplica*& curReplica = srcStorageElement->mReplicas[srcReplicaRndSelecter(rngEngine)];
                     if(curReplica->IsComplete())
                     {
                         SReplica* const newReplica = dstStorageElement->CreateReplica(curReplica->GetFile());
                         if(newReplica != nullptr)
                         {
-                            mTransferMgr->CreateTransfer(srcStorageElement, newReplica, now);
+                            mTransferMgr->CreateTransfer(curReplica, newReplica, now);
                             wasTransferCreated = true;
                             break;
                         }
                     }
-                    auto& firstReplica = srcStorageElement->mReplicas.front();
+                    SReplica*& firstReplica = srcStorageElement->mReplicas.front();
                     std::swap(curReplica->mIndexAtStorageElement, firstReplica->mIndexAtStorageElement);
                     std::swap(curReplica, firstReplica);
                 }

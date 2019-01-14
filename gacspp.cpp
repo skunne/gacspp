@@ -8,14 +8,20 @@
 #include "COutput.hpp"
 #include "CSimpleSim.hpp"
 
+//#define TEMP_DB
+
 int main(int argc, char** argv)
 {
     COutput& output = COutput::GetRef();
 
     {
-        auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
         std::stringstream dbFileNamePath;
+    #ifdef TEMP_DB
+        dbFileNamePath << ":memory:";
+    #else
+        auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
         dbFileNamePath << std::put_time(std::localtime(&now), "%H-%M-%S") << "-output.db";
+    #endif
         if(!output.Initialise(dbFileNamePath.str()))
             return 1;
     }
