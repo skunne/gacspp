@@ -11,20 +11,39 @@
 struct sqlite3;
 struct sqlite3_stmt;
 
-class IConcreteStatement
+
+class IBindableValue
+{
+public:
+    virtual bool Bind(sqlite3_stmt* stmt, int idx) = 0;
+};
+
+
+class CInsertStatements
 {
 protected:
     std::size_t mPreparedStatementIdx = 0;
+    std::vector<std::unique_ptr<IBindableValue>> mValues;
 
 public:
-    IConcreteStatement(std::size_t preparedStatementIdx)
-        : mPreparedStatementIdx(preparedStatementIdx)
-    {}
+    CInsertStatements(std::size_t preparedStatementIdx, std::size_t numReserve=0);
+
     inline auto GetPreparedStatementIdx() const -> std::size_t
     {return mPreparedStatementIdx;}
 
-    virtual std::size_t BindAndExecute(sqlite3_stmt* const stmt) = 0;
+    bool IsEmpty() const
+    {return mValues.empty();}
+
+    void AddValue(double value);
+    void AddValue(int value);
+    void AddValue(std::uint32_t value);
+    void AddValue(std::uint64_t value);
+    void AddValue(const std::string& value);
+    void AddValue(std::string&& value);
+
+    auto BindAndInsert(sqlite3_stmt* const stmt) -> std::size_t;
 };
+
 
 class COutput
 {
@@ -36,7 +55,7 @@ private:
 
     std::atomic_size_t mConsumerIdx = 0;
     std::atomic_size_t mProducerIdx = 0;
-    std::unique_ptr<IConcreteStatement> mStatementBuffer[OUTPUT_BUF_SIZE];
+    std::unique_ptr<CInsertStatements> mStatementBuffer[OUTPUT_BUF_SIZE];
 
     sqlite3* mDB = nullptr;
     std::vector<sqlite3_stmt*> mPreparedStatements;
@@ -60,7 +79,7 @@ public:
     bool CreateTable(const std::string& tableName, const std::string& column);
     bool InsertRow(const std::string& tableName, const std::string& row);
 
-    void QueueStatement(IConcreteStatement* statement);
+    void QueueInserts(CInsertStatements* statements);
 
     void ConsumerThread();
 };

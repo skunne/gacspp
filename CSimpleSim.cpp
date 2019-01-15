@@ -16,88 +16,7 @@
 
 #include "sqlite3.h"
 
-/*
-int sqlite3_bind_double(sqlite3_stmt*, int, double);
-int sqlite3_bind_int(sqlite3_stmt*, int, int);
-int sqlite3_bind_int64(sqlite3_stmt*, int, sqlite3_int64);
-int sqlite3_bind_text(sqlite3_stmt*,int,const char*,int,void(*)(void*));
-*/
-class CTransferInsertStatement : public IConcreteStatement
-{
-public:
-    struct SValue
-    {
-        IdType mTransferId;
-        IdType mFileId;
-        IdType mSrcStorageElementId;
-        IdType mDstStorageElementId;
-        TickType mStartTick;
-        TickType mEndTick;
-    };
 
-    CTransferInsertStatement(std::vector<std::unique_ptr<SValue>>&& values, std::size_t preparedStatementIdx)
-        : IConcreteStatement(preparedStatementIdx),
-          mValues(std::move(values))
-    {
-        assert(!mValues.empty());
-    }
-
-    std::size_t BindAndExecute(sqlite3_stmt* const stmt) final
-    {
-        for(const std::unique_ptr<SValue>& value : mValues)
-        {
-            sqlite3_bind_int64(stmt, 1, value->mTransferId);
-            sqlite3_bind_int64(stmt, 2, value->mFileId);
-            sqlite3_bind_int64(stmt, 3, value->mSrcStorageElementId);
-            sqlite3_bind_int64(stmt, 4, value->mDstStorageElementId);
-            sqlite3_bind_int64(stmt, 5, value->mStartTick);
-            sqlite3_bind_int64(stmt, 6, value->mEndTick);
-            sqlite3_step(stmt);
-            sqlite3_clear_bindings(stmt);
-            sqlite3_reset(stmt);
-        }
-        return mValues.size();
-    }
-
-private:
-    std::vector<std::unique_ptr<SValue>> mValues;
-};
-class CFileInsertStatement : public IConcreteStatement
-{
-public:
-    struct SValue
-    {
-        IdType mFileId;
-        TickType mCreatedAt;
-        TickType mLifetime;
-        std::uint32_t mFileSize;
-    };
-
-    CFileInsertStatement(std::vector<std::unique_ptr<SValue>>&& values, std::size_t preparedStatementIdx)
-        : IConcreteStatement(preparedStatementIdx),
-        mValues(std::move(values))
-    {
-        assert(!mValues.empty());
-    }
-
-    std::size_t BindAndExecute(sqlite3_stmt* const stmt) final
-    {
-        for (const std::unique_ptr<SValue>& value : mValues)
-        {
-            sqlite3_bind_int64(stmt, 1, value->mFileId);
-            sqlite3_bind_int64(stmt, 2, value->mFileSize);
-            sqlite3_bind_int64(stmt, 3, value->mCreatedAt);
-            sqlite3_bind_int64(stmt, 4, value->mLifetime);
-            sqlite3_step(stmt);
-            sqlite3_clear_bindings(stmt);
-            sqlite3_reset(stmt);
-        }
-        return mValues.size();
-    }
-
-private:
-    std::vector<std::unique_ptr<SValue>> mValues;
-};
 
 class CDataGenerator : public CScheduleable
 {
@@ -138,7 +57,7 @@ private:
 
         assert(numReplicasPerFile <= numStorageElements);
 
-        std::vector<std::unique_ptr<CFileInsertStatement::SValue>> outputEvents;
+        CInsertStatements* outputs = new CInsertStatements(mOutputQueryIdx, numFiles);
         std::uniform_int_distribution<std::uint32_t> rngSampler(0, numStorageElements);
         std::uint64_t bytesOfFilesGen = 0;
         for(std::uint32_t i = 0; i < numFiles; ++i)
@@ -147,7 +66,12 @@ private:
             const TickType lifetime = GetRandomLifeTime();
 
             SFile* const file = mSim->mRucio->CreateFile(fileSize, now + lifetime);
-            outputEvents.emplace_back(new CFileInsertStatement::SValue{ file->GetId(), now, lifetime, fileSize });
+
+            outputs->AddValue(file->GetId());
+            outputs->AddValue(now);
+            outputs->AddValue(lifetime);
+            outputs->AddValue(fileSize);
+
             bytesOfFilesGen += fileSize;
 
             auto reverseRSEIt = mStorageElements.rbegin();
@@ -160,7 +84,7 @@ private:
 				++reverseRSEIt;
             }
         }
-        COutput::GetRef().QueueStatement(new CFileInsertStatement(std::move(outputEvents), mOutputQueryIdx));
+        COutput::GetRef().QueueInserts(outputs);
         return bytesOfFilesGen;
     }
 
@@ -340,7 +264,8 @@ public:
 
         std::size_t idx = 0;
         std::uint64_t summedTraffic = 0;
-        std::vector<std::unique_ptr<CTransferInsertStatement::SValue>> outputEvents;
+        CInsertStatements* outputs = new CInsertStatements(mOutputQueryIdx, static_cast<std::size_t>(mActiveTransfers.size() / 4.f));
+
         while (idx < mActiveTransfers.size())
         {
             STransfer& transfer = mActiveTransfers[idx];
@@ -361,13 +286,13 @@ public:
 
             if(dstReplica->IsComplete())
             {
-                outputEvents.emplace_back(new CTransferInsertStatement::SValue{
-                    GetNewId(),
-                    dstReplica->GetFile()->GetId(),
-                    transfer.mSrcReplica->GetStorageElement()->GetId(),
-                    dstReplica->GetStorageElement()->GetId(),
-                    transfer.mStartTick,
-                    now});
+                outputs->AddValue(GetNewId());
+                outputs->AddValue(dstReplica->GetFile()->GetId());
+                outputs->AddValue(transfer.mSrcReplica->GetStorageElement()->GetId());
+                outputs->AddValue(dstReplica->GetStorageElement()->GetId());
+                outputs->AddValue(transfer.mStartTick);
+                outputs->AddValue(now);
+
                 ++linkSelector->mDoneTransfers;
                 ++mNumCompletedTransfers;
                 mSummedTransferDuration += now - transfer.mStartTick;
@@ -377,10 +302,8 @@ public:
             }
             ++idx;
         }
-        if(!outputEvents.empty())
-        {
-            COutput::GetRef().QueueStatement(new CTransferInsertStatement(std::move(outputEvents), mOutputQueryIdx));
-        }
+
+        COutput::GetRef().QueueInserts(outputs);
         //mTrafficLog << now << "|" << summedTraffic << "|";
 
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;

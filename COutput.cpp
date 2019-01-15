@@ -8,6 +8,144 @@
 #include "sqlite3.h"
 
 
+
+class CBindableDoubleValue : public IBindableValue
+{
+private:
+    double mValue;
+
+public:
+    CBindableDoubleValue(double val)
+        : mValue(val)
+    {}
+
+    bool Bind(sqlite3_stmt* const stmt, int idx) final
+    {
+        return sqlite3_bind_double(stmt, idx, mValue) == SQLITE_OK;
+    }
+};
+
+class CBindableIntValue : public IBindableValue
+{
+private:
+    int mValue;
+
+public:
+    CBindableIntValue(int val)
+        : mValue(val)
+    {}
+
+    bool Bind(sqlite3_stmt* const stmt, int idx) final
+    {
+        return sqlite3_bind_int(stmt, idx, mValue) == SQLITE_OK;
+    }
+};
+
+class CBindableInt64Value : public IBindableValue
+{
+private:
+    uint64_t mValue;
+
+public:
+    CBindableInt64Value(std::uint64_t val)
+        : mValue(val)
+    {}
+
+    bool Bind(sqlite3_stmt* const stmt, int idx) final
+    {
+        return sqlite3_bind_int64(stmt, idx, mValue) == SQLITE_OK;
+    }
+};
+
+class CBindableStringValue : public IBindableValue
+{
+private:
+    std::string mValue;
+
+public:
+    CBindableStringValue(const std::string& val)
+        : mValue(val)
+    {}
+
+    CBindableStringValue(std::string&& val)
+        : mValue(std::move(val))
+    {}
+
+    bool Bind(sqlite3_stmt* const stmt, int idx) final
+    {
+        if(mValue.empty())
+            return sqlite3_bind_null(stmt, idx) == SQLITE_OK;
+        else
+            return sqlite3_bind_text(stmt, idx, mValue.c_str(), mValue.size(), SQLITE_TRANSIENT) == SQLITE_OK;
+    }
+};
+
+CInsertStatements::CInsertStatements(std::size_t preparedStatementIdx, std::size_t numReserve)
+    : mPreparedStatementIdx(preparedStatementIdx)
+{
+    if(numReserve>0)
+        mValues.reserve(numReserve);
+}
+
+void CInsertStatements::AddValue(double value)
+{
+    mValues.emplace_back(new CBindableDoubleValue(value));
+}
+
+void CInsertStatements::AddValue(int value)
+{
+    mValues.emplace_back(new CBindableIntValue(value));
+}
+
+void CInsertStatements::AddValue(std::uint32_t value)
+{
+    mValues.emplace_back(new CBindableInt64Value(value));
+}
+
+void CInsertStatements::AddValue(std::uint64_t value)
+{
+    mValues.emplace_back(new CBindableInt64Value(value));
+}
+
+void CInsertStatements::AddValue(const std::string& value)
+{
+    mValues.emplace_back(new CBindableStringValue(value));
+}
+
+void CInsertStatements::AddValue(std::string&& value)
+{
+    mValues.emplace_back(new CBindableStringValue(std::move(value)));
+}
+
+std::size_t CInsertStatements::BindAndInsert(sqlite3_stmt* const stmt)
+{
+    if(mValues.empty())
+        return 0;
+
+    const std::size_t numToBindPerRow = static_cast<std::size_t>(sqlite3_bind_parameter_count(stmt));
+    assert(numToBindPerRow > 0);
+    assert((mValues.size() % numToBindPerRow) == 0);
+
+    auto curValsIt = mValues.begin();
+    std::size_t numInserted = 0;
+    while(curValsIt != mValues.end())
+    {
+        for(std::size_t numBinded=1; numBinded<=numToBindPerRow; ++numBinded)
+        {
+            (*curValsIt)->Bind(stmt, numBinded);
+            ++curValsIt;
+        }
+        sqlite3_step(stmt);
+        sqlite3_clear_bindings(stmt);
+        sqlite3_reset(stmt);
+        numInserted += 1;
+    }
+
+    mValues.clear();
+    return numInserted;
+}
+
+
 auto COutput::GetRef() -> COutput&
 {
     static COutput mInstance;
@@ -98,8 +236,14 @@ bool COutput::InsertRow(const std::string& tableName, const std::string& row)
     return sqlite3_exec(mDB, str.c_str(), nullptr, nullptr, nullptr) == SQLITE_OK;
 }
 
-void COutput::QueueStatement(IConcreteStatement* statement)
+void COutput::QueueInserts(CInsertStatements* statements)
 {
+    if(statements->IsEmpty())
+    {
+        delete statements;
+        return;
+    }
+
     std::size_t newProducerIdx = (mProducerIdx + 1) % OUTPUT_BUF_SIZE;
     while(newProducerIdx == mConsumerIdx)
     {
@@ -107,7 +251,7 @@ void COutput::QueueStatement(IConcreteStatement* statement)
         newProducerIdx = (mProducerIdx + 1) % OUTPUT_BUF_SIZE;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    mStatementBuffer[mProducerIdx] = std::unique_ptr<IConcreteStatement>(statement);
+    mStatementBuffer[mProducerIdx] = std::unique_ptr<CInsertStatements>(statements);
     mProducerIdx = newProducerIdx;
 }
 
@@ -124,11 +268,11 @@ void COutput::ConsumerThread()
                 sqlite3_exec(mDB, "BEGIN TRANSACTION", nullptr, nullptr, nullptr);
                 hasTransactionBegun = true;
             }
-            std::unique_ptr<IConcreteStatement> statement = std::move(mStatementBuffer[mConsumerIdx]);
+            std::unique_ptr<CInsertStatements> statement = std::move(mStatementBuffer[mConsumerIdx]);
             mConsumerIdx = (mConsumerIdx + 1) % OUTPUT_BUF_SIZE;
             assert(statement != nullptr);
             auto sqlStmt = mPreparedStatements[statement->GetPreparedStatementIdx()];
-            numInsertionsPerTransaction += statement->BindAndExecute(sqlStmt);
+            numInsertionsPerTransaction += statement->BindAndInsert(sqlStmt);
             if(numInsertionsPerTransaction > 20000)
             {
                 sqlite3_exec(mDB, "END TRANSACTION", nullptr, nullptr, nullptr);
