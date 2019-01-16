@@ -57,7 +57,7 @@ private:
 
         assert(numReplicasPerFile <= numStorageElements);
 
-        CInsertStatements* outputs = new CInsertStatements(mOutputQueryIdx, numFiles * 4);
+        std::shared_ptr<CInsertStatements> outputs(new CInsertStatements(mOutputQueryIdx, numFiles * 4));
         std::uniform_int_distribution<std::uint32_t> rngSampler(0, numStorageElements);
         std::uint64_t bytesOfFilesGen = 0;
         for(std::uint32_t i = 0; i < numFiles; ++i)
@@ -264,7 +264,7 @@ public:
 
         std::size_t idx = 0;
         std::uint64_t summedTraffic = 0;
-        CInsertStatements* outputs = new CInsertStatements(mOutputQueryIdx, 6 + mActiveTransfers.size());
+        std::shared_ptr<CInsertStatements> outputs(new CInsertStatements(mOutputQueryIdx, 6 + mActiveTransfers.size()));
 
         while (idx < mActiveTransfers.size())
         {
@@ -527,9 +527,9 @@ public:
         statusOutput << "AvgTransferDuration: " << (mG2CTransferMgr->mSummedTransferDuration / mG2CTransferMgr->mNumCompletedTransfers);
         statusOutput << " + " << (mC2CTransferMgr->mSummedTransferDuration / mC2CTransferMgr->mNumCompletedTransfers) << std::endl;
 
-       // mG2CTransferMgr->mNumCompletedTransfers = 0;
+        mG2CTransferMgr->mNumCompletedTransfers = 0;
         mG2CTransferMgr->mSummedTransferDuration = 0;
-        //mC2CTransferMgr->mNumCompletedTransfers = 0;
+        mC2CTransferMgr->mNumCompletedTransfers = 0;
         mC2CTransferMgr->mSummedTransferDuration = 0;
 
 		std::size_t maxW = 0;
@@ -597,6 +597,9 @@ void CSimpleSim::SetupDefaults()
     ok = output.CreateTable("Files", "id BIGINT PRIMARY KEY, createdAt BIGINT, lifetime BIGINT, filesize INTEGER");
     assert(ok);
 
+    ok = output.CreateTable("Replicas", "fileId BIGINT, storageElementId BIGINT, PRIMARY KEY(fileId, storageElementId)");
+    assert(ok);
+
     columns << "id BIGINT PRIMARY KEY,"
             << "fileId BIGINT,"
             << "srcStorageElementId BIGINT,"
@@ -609,6 +612,8 @@ void CSimpleSim::SetupDefaults()
     ok = output.CreateTable("Transfers", columns.str());
     assert(ok);
     //INSERT INTO Transfers VALUES(?, ?, ?, ?, ?, ?);
+
+    CStorageElement::mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Replicas VALUES(?, ?);");
 
     //proccesses
     std::vector<std::shared_ptr<CBillingGenerator>> billingGenerators;

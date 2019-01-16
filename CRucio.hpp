@@ -118,6 +118,8 @@ protected:
     std::uint64_t mUsedStorage = 0;
 
 public:
+    static std::size_t mOutputQueryIdx;
+
 	std::vector<SReplica*> mReplicas;
 
 	CStorageElement(std::string&& name, ISite* const site);

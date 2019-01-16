@@ -236,13 +236,12 @@ bool COutput::InsertRow(const std::string& tableName, const std::string& row)
     return sqlite3_exec(mDB, str.c_str(), nullptr, nullptr, nullptr) == SQLITE_OK;
 }
 
-void COutput::QueueInserts(CInsertStatements* statements)
+void COutput::QueueInserts(std::shared_ptr<CInsertStatements>& statements)
 {
+    assert(statements != nullptr);
+
     if(statements->IsEmpty())
-    {
-        delete statements;
         return;
-    }
 
     std::size_t newProducerIdx = (mProducerIdx + 1) % OUTPUT_BUF_SIZE;
     while(newProducerIdx == mConsumerIdx)
@@ -251,37 +250,42 @@ void COutput::QueueInserts(CInsertStatements* statements)
         newProducerIdx = (mProducerIdx + 1) % OUTPUT_BUF_SIZE;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    mStatementBuffer[mProducerIdx] = std::unique_ptr<CInsertStatements>(statements);
+    mStatementsBuffer[mProducerIdx] = statements;
     mProducerIdx = newProducerIdx;
 }
 
 void COutput::ConsumerThread()
 {
-    bool hasTransactionBegun = false;
-    std::size_t numInsertionsPerTransaction = 0;
+    sqlite3_exec(mDB, "BEGIN TRANSACTION", nullptr, nullptr, nullptr);
+
+    std::size_t numInsertedCurTransaction = 0;
     while(mIsConsumerRunning || (mConsumerIdx != mProducerIdx))
     {
         while(mConsumerIdx != mProducerIdx)
         {
-            if(!hasTransactionBegun)
+            if(numInsertedCurTransaction > 25000)
             {
-                sqlite3_exec(mDB, "BEGIN TRANSACTION", nullptr, nullptr, nullptr);
-                hasTransactionBegun = true;
+                sqlite3_exec(mDB, "END TRANSACTION; BEGIN TRANSACTION", nullptr, nullptr, nullptr);
+                numInsertedCurTransaction = 0;
             }
-            std::unique_ptr<CInsertStatements> statement = std::move(mStatementBuffer[mConsumerIdx]);
+
+            const std::size_t sqlStmtIdx = mStatementsBuffer[mConsumerIdx]->GetPreparedStatementIdx();
+            sqlite3_stmt* sqlStmt = mPreparedStatements[sqlStmtIdx];
+            numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(sqlStmt);
+
+            mStatementsBuffer[mConsumerIdx] = nullptr;
             mConsumerIdx = (mConsumerIdx + 1) % OUTPUT_BUF_SIZE;
-            assert(statement != nullptr);
-            auto sqlStmt = mPreparedStatements[statement->GetPreparedStatementIdx()];
-            numInsertionsPerTransaction += statement->BindAndInsert(sqlStmt);
-            if(numInsertionsPerTransaction > 20000)
-            {
-                sqlite3_exec(mDB, "END TRANSACTION", nullptr, nullptr, nullptr);
-                numInsertionsPerTransaction = 0;
-                hasTransactionBegun = false;
-            }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+        // try to use time while buf is empty by commiting the transactionn
+        if(numInsertedCurTransaction > 1000)
+        {
+            sqlite3_exec(mDB, "END TRANSACTION; BEGIN TRANSACTION", nullptr, nullptr, nullptr);
+            numInsertedCurTransaction = 0;
+        }
+        else
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    if(hasTransactionBegun)
-        sqlite3_exec(mDB, "END TRANSACTION", nullptr, nullptr, nullptr);
+
+    sqlite3_exec(mDB, "END TRANSACTION", nullptr, nullptr, nullptr);
 }

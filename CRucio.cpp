@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <cassert>
 
+#include "COutput.hpp"
 #include "CRucio.hpp"
 
+std::size_t CStorageElement::mOutputQueryIdx = 0;
 
 SFile::SFile(const std::uint32_t size, const TickType expiresAt)
     : mId(GetNewId()),
@@ -101,6 +103,12 @@ auto CStorageElement::CreateReplica(SFile* const file) -> SReplica*
     SReplica* newReplica = new SReplica(file, this, mReplicas.size());
     file->mReplicas.emplace_back(newReplica);
     mReplicas.push_back(newReplica);
+
+    std::shared_ptr<CInsertStatements> outputs(new CInsertStatements(mOutputQueryIdx, 2));
+    outputs->AddValue(file->GetId());
+    outputs->AddValue(mId);
+    COutput::GetRef().QueueInserts(outputs);
+
     return newReplica;
 }
 

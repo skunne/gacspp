@@ -55,7 +55,7 @@ private:
 
     std::atomic_size_t mConsumerIdx = 0;
     std::atomic_size_t mProducerIdx = 0;
-    std::unique_ptr<CInsertStatements> mStatementBuffer[OUTPUT_BUF_SIZE];
+    std::shared_ptr<CInsertStatements> mStatementsBuffer[OUTPUT_BUF_SIZE];
 
     sqlite3* mDB = nullptr;
     std::vector<sqlite3_stmt*> mPreparedStatements;
@@ -79,7 +79,7 @@ public:
     bool CreateTable(const std::string& tableName, const std::string& column);
     bool InsertRow(const std::string& tableName, const std::string& row);
 
-    void QueueInserts(CInsertStatements* statements);
+    void QueueInserts(std::shared_ptr<CInsertStatements>& statements);
 
     void ConsumerThread();
 };
