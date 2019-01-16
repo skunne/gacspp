@@ -57,7 +57,7 @@ private:
 
         assert(numReplicasPerFile <= numStorageElements);
 
-        CInsertStatements* outputs = new CInsertStatements(mOutputQueryIdx, numFiles);
+        CInsertStatements* outputs = new CInsertStatements(mOutputQueryIdx, numFiles * 4);
         std::uniform_int_distribution<std::uint32_t> rngSampler(0, numStorageElements);
         std::uint64_t bytesOfFilesGen = 0;
         for(std::uint32_t i = 0; i < numFiles; ++i)
@@ -264,7 +264,7 @@ public:
 
         std::size_t idx = 0;
         std::uint64_t summedTraffic = 0;
-        CInsertStatements* outputs = new CInsertStatements(mOutputQueryIdx, static_cast<std::size_t>(mActiveTransfers.size() / 4.f));
+        CInsertStatements* outputs = new CInsertStatements(mOutputQueryIdx, 6 + mActiveTransfers.size());
 
         while (idx < mActiveTransfers.size())
         {
@@ -448,7 +448,7 @@ public:
             for(std::size_t numSrcStorageElementsTried = 0; numSrcStorageElementsTried < numSrcStorageElements; ++numSrcStorageElementsTried)
             {
                 std::uniform_int_distribution<std::size_t> srcStorageElementRndSelecter(numSrcStorageElementsTried, numSrcStorageElements - 1);
-                CStorageElement* srcStorageElement = mSrcStorageElements[srcStorageElementRndSelecter(rngEngine)];
+                CStorageElement*& srcStorageElement = mSrcStorageElements[srcStorageElementRndSelecter(rngEngine)];
                 const std::size_t numSrcReplicas = srcStorageElement->mReplicas.size();
                 for(std::size_t numSrcReplciasTried = 0; numSrcReplciasTried < numSrcReplicas; ++numSrcReplciasTried)
                 {
