@@ -104,11 +104,6 @@ auto CStorageElement::CreateReplica(SFile* const file) -> SReplica*
     file->mReplicas.emplace_back(newReplica);
     mReplicas.push_back(newReplica);
 
-    std::shared_ptr<CInsertStatements> outputs(new CInsertStatements(mOutputQueryIdx, 2));
-    outputs->AddValue(file->GetId());
-    outputs->AddValue(mId);
-    COutput::GetRef().QueueInserts(outputs);
-
     return newReplica;
 }
 

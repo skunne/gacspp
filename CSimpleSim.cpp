@@ -57,7 +57,8 @@ private:
 
         assert(numReplicasPerFile <= numStorageElements);
 
-        std::shared_ptr<CInsertStatements> outputs(new CInsertStatements(mOutputQueryIdx, numFiles * 4));
+        std::shared_ptr<CInsertStatements> fileInsertStmts(new CInsertStatements(mOutputQueryIdx, numFiles * 4));
+        std::shared_ptr<CInsertStatements> replicaInsertStmts(new CInsertStatements(CStorageElement::mOutputQueryIdx, numFiles * numReplicasPerFile * 2));
         std::uniform_int_distribution<std::uint32_t> rngSampler(0, numStorageElements);
         std::uint64_t bytesOfFilesGen = 0;
         for(std::uint32_t i = 0; i < numFiles; ++i)
@@ -67,10 +68,10 @@ private:
 
             SFile* const file = mSim->mRucio->CreateFile(fileSize, now + lifetime);
 
-            outputs->AddValue(file->GetId());
-            outputs->AddValue(now);
-            outputs->AddValue(lifetime);
-            outputs->AddValue(fileSize);
+            fileInsertStmts->AddValue(file->GetId());
+            fileInsertStmts->AddValue(now);
+            fileInsertStmts->AddValue(lifetime);
+            fileInsertStmts->AddValue(fileSize);
 
             bytesOfFilesGen += fileSize;
 
@@ -80,11 +81,14 @@ private:
             {
                 auto selectedElementIt = mStorageElements.begin() + (rngSampler(mSim->mRNGEngine) % (numStorageElements - numCreated));
                 (*selectedElementIt)->CreateReplica(file)->Increase(fileSize, now);
+                replicaInsertStmts->AddValue(file->GetId());
+                replicaInsertStmts->AddValue((*selectedElementIt)->GetId());
                 std::iter_swap(selectedElementIt, reverseRSEIt);
 				++reverseRSEIt;
             }
         }
-        COutput::GetRef().QueueInserts(outputs);
+        COutput::GetRef().QueueInserts(fileInsertStmts);
+        COutput::GetRef().QueueInserts(replicaInsertStmts);
         return bytesOfFilesGen;
     }
 
@@ -362,14 +366,20 @@ public:
 
     void OnUpdate(const TickType now) final
     {
-        auto curRealtime = std::chrono::high_resolution_clock::now();
         assert(mSrcStorageElements.size() > 0);
+
+        auto curRealtime = std::chrono::high_resolution_clock::now();
+
         IBaseSim::RNGEngineType& rngEngine = mSim->mRNGEngine;
+        std::uniform_int_distribution<std::size_t> dstStorageElementRndChooser(0, mDstStorageElements.size()-1);
+
         const std::uint32_t numActive = static_cast<std::uint32_t>(mTransferMgr->GetNumActiveTransfers());
         const std::uint32_t numToCreate = mTransferNumberGen->GetNumToCreate(rngEngine, numActive, now);
         const std::uint32_t numToCreatePerRSE = static_cast<std::uint32_t>( numToCreate/static_cast<double>(mSrcStorageElements.size()) );
+
+        std::shared_ptr<CInsertStatements> replicaInsertStmts(new CInsertStatements(CStorageElement::mOutputQueryIdx, numToCreate * 2));
+
         std::uint32_t totalTransfersCreated = 0;
-        std::uniform_int_distribution<std::size_t> dstStorageElementRndChooser(0, mDstStorageElements.size()-1);
         for(CStorageElement* srcStorageElement : mSrcStorageElements)
         {
             std::uint32_t numCreated = 0;
@@ -383,10 +393,13 @@ public:
                 SReplica*& curReplica = srcStorageElement->mReplicas[idx];
                 if(curReplica->IsComplete())
                 {
+                    SFile* const file = curReplica->GetFile();
                     CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(rngEngine)];
-                    SReplica* const newReplica = dstStorageElement->CreateReplica(curReplica->GetFile());
+                    SReplica* const newReplica = dstStorageElement->CreateReplica(file);
                     if(newReplica != nullptr)
                     {
+                        replicaInsertStmts->AddValue(file->GetId());
+                        replicaInsertStmts->AddValue(dstStorageElement->GetId());
                         mTransferMgr->CreateTransfer(curReplica, newReplica, now);
                         ++numCreated;
                     }
@@ -397,6 +410,8 @@ public:
             }
             totalTransfersCreated += numCreated;
         }
+
+        COutput::GetRef().QueueInserts(replicaInsertStmts);
 
         //std::cout<<"["<<now<<"]\nnumActive: "<<numActive<<"\nnumToCreate: "<<numToCreate<<"\ntotalCreated: "<<numToCreatePerRSE<<std::endl;
         //mTransferMgr->mTransferLog << 1 << "|" << now << "|" << numToCreate << "|";
@@ -439,9 +454,9 @@ public:
         const std::uint32_t numActive = static_cast<std::uint32_t>(mTransferMgr->GetNumActiveTransfers());
         const std::uint32_t numToCreate = mTransferNumberGen->GetNumToCreate(rngEngine, numActive, now);
 
-        std::uint32_t totalTransfersCreated = 0;
+        std::shared_ptr<CInsertStatements> replicaInsertStmts(new CInsertStatements(CStorageElement::mOutputQueryIdx, numToCreate * 2));
 
-        for(totalTransfersCreated=0; totalTransfersCreated<numToCreate; ++totalTransfersCreated)
+        for(std::uint32_t totalTransfersCreated=0; totalTransfersCreated<numToCreate; ++totalTransfersCreated)
         {
             CStorageElement* const dstStorageElement = mDstStorageElements[static_cast<std::size_t>(dstStorageElementRndSelecter(rngEngine) * 2) % numDstStorageElements];
             bool wasTransferCreated = false;
@@ -456,9 +471,12 @@ public:
                     SReplica*& curReplica = srcStorageElement->mReplicas[srcReplicaRndSelecter(rngEngine)];
                     if(curReplica->IsComplete())
                     {
-                        SReplica* const newReplica = dstStorageElement->CreateReplica(curReplica->GetFile());
+                        SFile* const file = curReplica->GetFile();
+                        SReplica* const newReplica = dstStorageElement->CreateReplica(file);
                         if(newReplica != nullptr)
                         {
+                            replicaInsertStmts->AddValue(file->GetId());
+                            replicaInsertStmts->AddValue(dstStorageElement->GetId());
                             mTransferMgr->CreateTransfer(curReplica, newReplica, now);
                             wasTransferCreated = true;
                             break;
@@ -473,6 +491,8 @@ public:
                 std::swap(srcStorageElement, mSrcStorageElements.front());
             }
         }
+
+        COutput::GetRef().QueueInserts(replicaInsertStmts);
         //std::cout<<"["<<now<<"]: numActive: "<<numActive<<"; numToCreate: "<<numToCreate<<std::endl;
 
         //mTransferMgr->mTransferLog << 1 << "|" << now << "|" << numToCreate << "|";
