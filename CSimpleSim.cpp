@@ -232,15 +232,11 @@ private:
     std::vector<STransfer> mActiveTransfers;
 
 public:
-    //std::ofstream mTransferLog;
-    //std::ofstream mTrafficLog;
     std::uint32_t mNumCompletedTransfers = 0;
     TickType mSummedTransferDuration = 0;
-    CTransferManager(const std::string& transferLogFilePath, const std::string& trafficLogFilePath, const std::uint32_t tickFreq, const TickType startTick=0)
+    CTransferManager(const std::uint32_t tickFreq, const TickType startTick=0)
         : CScheduleable(startTick),
-          mTickFreq(tickFreq)//,
-          //mTransferLog(transferLogFilePath),
-          //mTrafficLog(trafficLogFilePath)
+          mTickFreq(tickFreq)
     {
         mActiveTransfers.reserve(2048);
         mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?, ?);");
@@ -262,7 +258,6 @@ public:
     void OnUpdate(const TickType now) final
     {
         auto curRealtime = std::chrono::high_resolution_clock::now();
-        //mTransferLog << 0 << "|" << now << "|" << mActiveTransfers.size() << "|";
 		const std::uint32_t timeDiff = static_cast<std::uint32_t>(now - mLastUpdated);
         mLastUpdated = now;
 
@@ -308,7 +303,6 @@ public:
         }
 
         COutput::GetRef().QueueInserts(outputs);
-        //mTrafficLog << now << "|" << summedTraffic << "|";
 
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mTickFreq;
@@ -351,7 +345,6 @@ private:
     std::uint32_t mTickFreq;
 
 public:
-    //std::ofstream* mTransferLog;
     std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
     std::vector<CStorageElement*> mSrcStorageElements;
     std::vector<CStorageElement*> mDstStorageElements;
@@ -414,7 +407,6 @@ public:
         COutput::GetRef().QueueInserts(replicaInsertStmts);
 
         //std::cout<<"["<<now<<"]\nnumActive: "<<numActive<<"\nnumToCreate: "<<numToCreate<<"\ntotalCreated: "<<numToCreatePerRSE<<std::endl;
-        //mTransferMgr->mTransferLog << 1 << "|" << now << "|" << numToCreate << "|";
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mTickFreq;
     }
@@ -427,7 +419,6 @@ private:
     std::uint32_t mTickFreq;
 
 public:
-    //std::ofstream* mTransferLog;
     std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
     std::vector<CStorageElement*> mSrcStorageElements;
     std::vector<CStorageElement*> mDstStorageElements;
@@ -495,7 +486,6 @@ public:
         COutput::GetRef().QueueInserts(replicaInsertStmts);
         //std::cout<<"["<<now<<"]: numActive: "<<numActive<<"; numToCreate: "<<numToCreate<<std::endl;
 
-        //mTransferMgr->mTransferLog << 1 << "|" << now << "|" << numToCreate << "|";
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mTickFreq;
     }
@@ -641,13 +631,13 @@ void CSimpleSim::SetupDefaults()
     std::shared_ptr<CReaper> reaper(new CReaper(mRucio.get(), 600, 600));
 
 
-    std::shared_ptr<CTransferManager> g2cTransferMgr(new CTransferManager("g2c_transfers.dat", "g2c_traffic.dat", 20, 100));
+    std::shared_ptr<CTransferManager> g2cTransferMgr(new CTransferManager(20, 100));
     //std::shared_ptr<CTransferGeneratorUniform> g2cTransferGen(new CTransferGeneratorUniform(this, g2cTransferMgr.get(), 25));
     std::shared_ptr<CTransferGeneratorExponential> g2cTransferGen(new CTransferGeneratorExponential(this, g2cTransferMgr.get(), 25));
     g2cTransferGen->mTransferNumberGen->mSoftmaxScale = 15;
     g2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 500;
 
-    std::shared_ptr<CTransferManager> c2cTransferMgr(new CTransferManager("c2c_transfers.dat", "c2c_traffic.dat", 20, 100));
+    std::shared_ptr<CTransferManager> c2cTransferMgr(new CTransferManager(20, 100));
     std::shared_ptr<CTransferGeneratorExponential> c2cTransferGen(new CTransferGeneratorExponential(this, c2cTransferMgr.get(), 25));
     c2cTransferGen->mTransferNumberGen->mSoftmaxScale = 10;
     c2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 40;
