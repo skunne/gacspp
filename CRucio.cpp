@@ -109,11 +109,13 @@ auto CStorageElement::CreateReplica(SFile* const file) -> SReplica*
 
 void CStorageElement::OnIncreaseReplica(const std::uint64_t amount, const TickType now)
 {
+    (void)now;
     mUsedStorage += amount;
 }
 
 void CStorageElement::OnRemoveReplica(const SReplica* const replica, const TickType now)
 {
+    (void)now;
     const auto FileIdIterator = mFileIds.find(replica->GetFile()->GetId());
     const std::size_t idxToDelete = replica->mIndexAtStorageElement;
     const std::uint32_t curSize = replica->GetCurSize();

@@ -547,7 +547,7 @@ public:
 			if (it.first.size() > maxW)
 				maxW = it.first.size();
 
-        statusOutput << "  " << std::setw(maxW) << "Duration" << ": " << std::setw(7) << timeDiff.count() << "s\n";
+        statusOutput << "  " << std::setw(maxW) << "Duration" << ": " << std::setw(6) << timeDiff.count() << "s\n";
         for(auto it : mProccessDurations)
         {
             statusOutput << "  " << std::setw(maxW) << it.first;

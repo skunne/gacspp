@@ -83,7 +83,7 @@ namespace gcp
 			regionStorageCosts += bucket->CalculateStorageCosts(now);
 		return regionStorageCosts;
 	}
-	double CRegion::CalculateNetworkCosts(TickType now, double& sumUsedTraffic, std::uint64_t& sumDoneTransfers)
+	double CRegion::CalculateNetworkCosts(double& sumUsedTraffic, std::uint64_t& sumDoneTransfers)
 	{
 		double regionNetworkCosts = 0;
 		for (auto& linkSelector : mLinkSelectors)
@@ -119,7 +119,7 @@ namespace gcp
 			auto region = dynamic_cast<CRegion*>(site.get());
 			assert(region != nullptr);
 			const double regionStorageCosts = region->CalculateStorageCosts(now);
-			const double regionNetworkCosts = region->CalculateNetworkCosts(now, sumUsedTraffic, sumDoneTransfer);
+			const double regionNetworkCosts = region->CalculateNetworkCosts(sumUsedTraffic, sumDoneTransfer);
 			totalStorageCosts += regionStorageCosts;
 			totalNetworkCosts += regionNetworkCosts;
 		}

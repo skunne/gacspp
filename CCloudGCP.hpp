@@ -61,7 +61,7 @@ namespace gcp
 
 		auto CreateStorageElement(std::string&& name) -> CBucket* final;
 		double CalculateStorageCosts(TickType now);
-		double CalculateNetworkCosts(TickType now, double& sumUsedTraffic, std::uint64_t& sumDoneTransfers);
+		double CalculateNetworkCosts(double& sumUsedTraffic, std::uint64_t& sumDoneTransfers);
 
 		inline auto GetMultiLocationIdx() const -> std::uint32_t
 		{return mMultiLocationIdx;}
