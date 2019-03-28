@@ -16,14 +16,33 @@ SFile::SFile(const std::uint32_t size, const TickType expiresAt)
 void SFile::Remove(const TickType now)
 {
     for(auto& replica : mReplicas)
-        replica->Remove(now);
+        replica->OnRemoveByFile(now);
+    mReplicas.clear();
+}
+void SFile::Remove(SReplica* const replica, const TickType now)
+{
+    replica->OnRemoveByFile(now);
+
+    const std::size_t replicaIdxAtFile = replica->mIndexAtFile;
+    std::size_t& lastReplicaIdxAtFile = mReplicas.back()->mIndexAtFile;
+
+    if(replicaIdxAtFile != lastReplicaIdxAtFile)
+    {
+        lastReplicaIdxAtFile = replicaIdxAtFile;
+        mReplicas[replicaIdxAtFile] = std::move(mReplicas.back());
+    }
+    mReplicas.pop_back();
+
+    if(mReplicas.empty())
+        mExpiresAt = 0;
 }
 
 
-SReplica::SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement)
+SReplica::SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement, const std::size_t indexAtFile)
     : mFile(file),
       mStorageElement(storageElement),
-      mIndexAtStorageElement(indexAtStorageElement)
+      mIndexAtStorageElement(indexAtStorageElement),
+      mIndexAtFile(indexAtFile)
 {}
 auto SReplica::Increase(std::uint32_t amount, const TickType now) -> std::uint32_t
 {
@@ -39,13 +58,12 @@ auto SReplica::Increase(std::uint32_t amount, const TickType now) -> std::uint32
     mStorageElement->OnIncreaseReplica(amount, now);
     return amount;
 }
-void SReplica::Remove(const TickType now)
+void SReplica::OnRemoveByFile(const TickType now)
 {
     if(mTransferRef)
         (*mTransferRef) = nullptr;
     mStorageElement->OnRemoveReplica(this, now);
 }
-
 
 
 ISite::ISite(std::string&& name, std::string&& locationName)
@@ -100,7 +118,7 @@ auto CStorageElement::CreateReplica(SFile* const file) -> SReplica*
     if (!result.second)
         return nullptr;
 
-    SReplica* newReplica = new SReplica(file, this, mReplicas.size());
+    SReplica* newReplica = new SReplica(file, this, mReplicas.size(), file->mReplicas.size());
     file->mReplicas.emplace_back(newReplica);
     mReplicas.push_back(newReplica);
 

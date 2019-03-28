@@ -64,6 +64,7 @@ public:
     SFile& operator=(SFile const&) = delete;
 
 	void Remove(const TickType now);
+    void Remove(SReplica* const replica, const TickType now);
 
     inline auto GetId() const -> IdType
     {return mId;}
@@ -81,8 +82,9 @@ private:
 public:
     SReplica** mTransferRef = nullptr;
     std::size_t mIndexAtStorageElement;
+    std::size_t mIndexAtFile;
 
-    SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement);
+    SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement, const std::size_t indexAtFile);
 
     SReplica(SReplica&&) = default;
     SReplica& operator=(SReplica&&) = default;
@@ -91,6 +93,7 @@ public:
     SReplica& operator=(SReplica const&) = delete;
 
     auto Increase(std::uint32_t amount, const TickType now) -> std::uint32_t;
+	void OnRemoveByFile(const TickType now);
 	void Remove(const TickType now);
 
 	bool IsComplete() const
