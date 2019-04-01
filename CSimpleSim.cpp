@@ -204,12 +204,12 @@ private:
 
     struct STransfer
     {
-        SReplica* mSrcReplica;
-        SReplica* mDstReplica;
+        std::shared_ptr<SReplica> mSrcReplica;
+        std::shared_ptr<SReplica> mDstReplica;
         CLinkSelector* mLinkSelector;
         TickType mStartTick;
 
-        STransfer(SReplica* const srcReplica, SReplica* const dstReplica, CLinkSelector* const linkSelector, TickType startTick)
+        STransfer(std::shared_ptr<SReplica>& srcReplica, std::shared_ptr<SReplica>& dstReplica, CLinkSelector* const linkSelector, TickType startTick)
             : mSrcReplica(srcReplica),
               mDstReplica(dstReplica),
               mLinkSelector(linkSelector),
@@ -217,18 +217,6 @@ private:
         {}
     };
 
-    void DeleteTransferUnordered(const std::size_t idx)
-    {
-        auto& transfer = mActiveTransfers[idx];
-        do {
-            transfer.mLinkSelector->mNumActiveTransfers -= 1;
-            transfer = std::move(mActiveTransfers.back());
-            mActiveTransfers.pop_back();
-        } while (transfer.mDstReplica == nullptr && !mActiveTransfers.empty());
-
-        if (!mActiveTransfers.empty())
-            transfer.mDstReplica->mTransferRef = &(transfer.mDstReplica);
-    }
     std::vector<STransfer> mActiveTransfers;
 
 public:
@@ -242,7 +230,7 @@ public:
         mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?, ?);");
     }
 
-    void CreateTransfer(SReplica* const srcReplica, SReplica* const dstReplica, const TickType now)
+    void CreateTransfer(std::shared_ptr<SReplica>& srcReplica, std::shared_ptr<SReplica>& dstReplica, const TickType now)
     {
         assert(mActiveTransfers.size() < mActiveTransfers.capacity());
 
@@ -252,7 +240,6 @@ public:
 
         linkSelector->mNumActiveTransfers += 1;
         mActiveTransfers.emplace_back(srcReplica, dstReplica, linkSelector, now);
-        dstReplica->mTransferRef = &(mActiveTransfers.back().mDstReplica);
     }
 
     void OnUpdate(const TickType now) final
@@ -268,12 +255,16 @@ public:
         while (idx < mActiveTransfers.size())
         {
             STransfer& transfer = mActiveTransfers[idx];
-            SReplica* const dstReplica = transfer.mDstReplica;
+            std::shared_ptr<SReplica>& srcReplica = transfer.mSrcReplica;
+            std::shared_ptr<SReplica>& dstReplica = transfer.mDstReplica;
             CLinkSelector* const linkSelector = transfer.mLinkSelector;
-            if (dstReplica == nullptr)
+
+            if(srcReplica->IsDeleted() || dstReplica->IsDeleted())
             {
-                ++linkSelector->mFailedTransfers;
-                DeleteTransferUnordered(idx);
+                linkSelector->mFailedTransfers += 1;
+                linkSelector->mNumActiveTransfers -= 1;
+                transfer = std::move(mActiveTransfers.back());
+                mActiveTransfers.pop_back();
                 continue; // handle same idx again
             }
 
@@ -287,16 +278,18 @@ public:
             {
                 outputs->AddValue(GetNewId());
                 outputs->AddValue(dstReplica->GetFile()->GetId());
-                outputs->AddValue(transfer.mSrcReplica->GetStorageElement()->GetId());
+                outputs->AddValue(srcReplica->GetStorageElement()->GetId());
                 outputs->AddValue(dstReplica->GetStorageElement()->GetId());
                 outputs->AddValue(transfer.mStartTick);
                 outputs->AddValue(now);
 
-                ++linkSelector->mDoneTransfers;
                 ++mNumCompletedTransfers;
                 mSummedTransferDuration += now - transfer.mStartTick;
-                transfer.mDstReplica->mTransferRef = nullptr;
-                DeleteTransferUnordered(idx);
+
+                linkSelector->mDoneTransfers += 1;
+                linkSelector->mNumActiveTransfers -= 1;
+                transfer = std::move(mActiveTransfers.back());
+                mActiveTransfers.pop_back();
                 continue; // handle same idx again
             }
             ++idx;
@@ -383,12 +376,12 @@ public:
                 const std::size_t idx = rngSampler(rngEngine) % numSrcReplicas;
                 --numSrcReplicas;
 
-                SReplica*& curReplica = srcStorageElement->mReplicas[idx];
+                std::shared_ptr<SReplica>& curReplica = srcStorageElement->mReplicas[idx];
                 if(curReplica->IsComplete())
                 {
                     SFile* const file = curReplica->GetFile();
                     CStorageElement* const dstStorageElement = mDstStorageElements[dstStorageElementRndChooser(rngEngine)];
-                    SReplica* const newReplica = dstStorageElement->CreateReplica(file);
+                    std::shared_ptr<SReplica> newReplica = dstStorageElement->CreateReplica(file);
                     if(newReplica != nullptr)
                     {
                         replicaInsertStmts->AddValue(file->GetId());
@@ -397,7 +390,7 @@ public:
                         ++numCreated;
                     }
                 }
-                SReplica*& lastReplica = srcStorageElement->mReplicas[numSrcReplicas];
+                std::shared_ptr<SReplica>& lastReplica = srcStorageElement->mReplicas[numSrcReplicas];
                 std::swap(curReplica->mIndexAtStorageElement, lastReplica->mIndexAtStorageElement);
                 std::swap(curReplica, lastReplica);
             }
@@ -419,6 +412,8 @@ private:
     std::uint32_t mTickFreq;
 
 public:
+    bool mOverrideExpiration = false;
+
     std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
     std::vector<CStorageElement*> mSrcStorageElements;
     std::vector<CStorageElement*> mDstStorageElements;
@@ -433,6 +428,7 @@ public:
 
     void OnUpdate(const TickType now) final
     {
+        //std::cout<<mOverrideExpiration<<std::endl;
         auto curRealtime = std::chrono::high_resolution_clock::now();
 
         const std::size_t numSrcStorageElements = mSrcStorageElements.size();
@@ -459,21 +455,23 @@ public:
                 for(std::size_t numSrcReplciasTried = 0; numSrcReplciasTried < numSrcReplicas; ++numSrcReplciasTried)
                 {
                     std::uniform_int_distribution<std::size_t> srcReplicaRndSelecter(numSrcReplciasTried, numSrcReplicas - 1);
-                    SReplica*& curReplica = srcStorageElement->mReplicas[srcReplicaRndSelecter(rngEngine)];
+                    std::shared_ptr<SReplica>& curReplica = srcStorageElement->mReplicas[srcReplicaRndSelecter(rngEngine)];
                     if(curReplica->IsComplete())
                     {
                         SFile* const file = curReplica->GetFile();
-                        SReplica* const newReplica = dstStorageElement->CreateReplica(file);
+                        std::shared_ptr<SReplica> newReplica = dstStorageElement->CreateReplica(file);
                         if(newReplica != nullptr)
                         {
                             replicaInsertStmts->AddValue(file->GetId());
                             replicaInsertStmts->AddValue(dstStorageElement->GetId());
+                            if(mOverrideExpiration)
+                                newReplica->mExpiresAt = now + 2*SECONDS_PER_DAY;
                             mTransferMgr->CreateTransfer(curReplica, newReplica, now);
                             wasTransferCreated = true;
                             break;
                         }
                     }
-                    SReplica*& firstReplica = srcStorageElement->mReplicas.front();
+                    std::shared_ptr<SReplica>& firstReplica = srcStorageElement->mReplicas.front();
                     std::swap(curReplica->mIndexAtStorageElement, firstReplica->mIndexAtStorageElement);
                     std::swap(curReplica, firstReplica);
                 }
@@ -488,6 +486,7 @@ public:
 
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mTickFreq;
+        //std::cout<<"done"<<std::endl;
     }
 };
 class CHearbeat : public CScheduleable
@@ -636,6 +635,7 @@ void CSimpleSim::SetupDefaults()
     std::shared_ptr<CTransferGeneratorExponential> g2cTransferGen(new CTransferGeneratorExponential(this, g2cTransferMgr.get(), 25));
     g2cTransferGen->mTransferNumberGen->mSoftmaxScale = 15;
     g2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 500;
+    g2cTransferGen->mOverrideExpiration = true;
 
     std::shared_ptr<CTransferManager> c2cTransferMgr(new CTransferManager(20, 100));
     std::shared_ptr<CTransferGeneratorExponential> c2cTransferGen(new CTransferGeneratorExponential(this, c2cTransferMgr.get(), 25));

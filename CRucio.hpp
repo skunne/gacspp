@@ -52,7 +52,7 @@ private:
     std::uint32_t mSize;
 
 public:
-	std::vector<std::unique_ptr<SReplica>> mReplicas;
+	std::vector<std::shared_ptr<SReplica>> mReplicas;
 
     TickType mExpiresAt;
 
@@ -64,7 +64,6 @@ public:
     SFile& operator=(SFile const&) = delete;
 
 	void Remove(const TickType now);
-    void Remove(SReplica* const replica, const TickType now);
     auto RemoveExpiredReplicas(const TickType now) -> std::size_t;
 
     inline auto GetId() const -> IdType
@@ -81,7 +80,15 @@ private:
     std::uint32_t mCurSize = 0;
 
 public:
-    SReplica** mTransferRef = nullptr;
+    enum STATE
+    {
+        TRANSFERRING,
+        COMPLETE,
+        DELETED
+    };
+    STATE mState = TRANSFERRING;
+
+public:
     std::size_t mIndexAtStorageElement;
     std::size_t mIndexAtFile;
 
@@ -99,8 +106,10 @@ public:
 	void OnRemoveByFile(const TickType now);
 	void Remove(const TickType now);
 
-	bool IsComplete() const
-	{return mCurSize == mFile->GetSize();}
+	inline bool IsComplete() const
+	{return mState == COMPLETE;}
+	inline bool IsDeleted() const
+	{return mState == DELETED;}
 
     inline auto GetFile() -> SFile*
     {return mFile;}
@@ -126,7 +135,7 @@ protected:
 public:
     static std::size_t mOutputQueryIdx;
 
-	std::vector<SReplica*> mReplicas;
+	std::vector<std::shared_ptr<SReplica>> mReplicas;
 
 	CStorageElement(std::string&& name, ISite* const site);
     CStorageElement(CStorageElement&&) = default;
@@ -135,7 +144,7 @@ public:
     CStorageElement(CStorageElement const&) = delete;
     CStorageElement& operator=(CStorageElement const&) = delete;
 
-	auto CreateReplica(SFile* file) -> SReplica*;
+	auto CreateReplica(SFile* file) -> std::shared_ptr<SReplica>;
 
     virtual void OnIncreaseReplica(const std::uint64_t amount, const TickType now);
     virtual void OnRemoveReplica(const SReplica* replica, const TickType now);

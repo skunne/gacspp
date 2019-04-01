@@ -13,29 +13,14 @@ SFile::SFile(const std::uint32_t size, const TickType expiresAt)
 {
     mReplicas.reserve(8);
 }
+
 void SFile::Remove(const TickType now)
 {
     for(auto& replica : mReplicas)
         replica->OnRemoveByFile(now);
     mReplicas.clear();
 }
-void SFile::Remove(SReplica* const replica, const TickType now)
-{
-    replica->OnRemoveByFile(now);
 
-    const std::size_t replicaIdxAtFile = replica->mIndexAtFile;
-    std::size_t& lastReplicaIdxAtFile = mReplicas.back()->mIndexAtFile;
-
-    if(replicaIdxAtFile != lastReplicaIdxAtFile)
-    {
-        lastReplicaIdxAtFile = replicaIdxAtFile;
-        mReplicas[replicaIdxAtFile] = std::move(mReplicas.back());
-    }
-    mReplicas.pop_back();
-
-    if(mReplicas.empty())
-        mExpiresAt = 0;
-}
 auto SFile::RemoveExpiredReplicas(const TickType now) -> std::size_t
 {
     const std::size_t numReplicas = mReplicas.size();
@@ -55,7 +40,7 @@ auto SFile::RemoveExpiredReplicas(const TickType now) -> std::size_t
 
     for(;frontIdx < backIdx; ++frontIdx)
     {
-        std::unique_ptr<SReplica>& curReplica = mReplicas[frontIdx];
+        std::shared_ptr<SReplica>& curReplica = mReplicas[frontIdx];
         if(curReplica->mExpiresAt <= now)
         {
             std::swap(curReplica, mReplicas[backIdx]);
@@ -77,6 +62,7 @@ auto SFile::RemoveExpiredReplicas(const TickType now) -> std::size_t
 }
 
 
+
 SReplica::SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement, const std::size_t indexAtFile)
     : mFile(file),
       mStorageElement(storageElement),
@@ -84,26 +70,28 @@ SReplica::SReplica(SFile* const file, CStorageElement* const storageElement, con
       mIndexAtFile(indexAtFile),
       mExpiresAt(file->mExpiresAt)
 {}
+
 auto SReplica::Increase(std::uint32_t amount, const TickType now) -> std::uint32_t
 {
     const std::uint32_t maxSize = mFile->GetSize();
-    std::uint64_t newSize = mCurSize;
-    newSize += amount;
-    if (newSize > maxSize)
+    std::uint64_t newSize = mCurSize + amount;
+    if (newSize >= maxSize)
     {
         amount = maxSize - mCurSize;
         newSize = maxSize;
+        mState = COMPLETE;
     }
     mCurSize = static_cast<std::uint32_t>(newSize);
     mStorageElement->OnIncreaseReplica(amount, now);
     return amount;
 }
+
 void SReplica::OnRemoveByFile(const TickType now)
 {
-    if(mTransferRef)
-        (*mTransferRef) = nullptr;
     mStorageElement->OnRemoveReplica(this, now);
+    mState = DELETED;
 }
+
 
 
 ISite::ISite(std::string&& name, std::string&& locationName)
@@ -111,6 +99,7 @@ ISite::ISite(std::string&& name, std::string&& locationName)
       mName(std::move(name)),
 	  mLocationName(std::move(locationName))
 {}
+
 auto ISite::CreateLinkSelector(const ISite* const dstSite, const std::uint32_t bandwidth) -> CLinkSelector*
 {
     auto result = mDstSiteIdToLinkSelectorIdx.insert({dstSite->mId, mLinkSelectors.size()});
@@ -119,6 +108,7 @@ auto ISite::CreateLinkSelector(const ISite* const dstSite, const std::uint32_t b
     mLinkSelectors.emplace_back(newLinkSelector);
     return newLinkSelector;
 }
+
 auto ISite::GetLinkSelector(const ISite* const dstSite) -> CLinkSelector*
 {
     auto result = mDstSiteIdToLinkSelectorIdx.find(dstSite->mId);
@@ -128,11 +118,13 @@ auto ISite::GetLinkSelector(const ISite* const dstSite) -> CLinkSelector*
 }
 
 
+
 CGridSite::CGridSite(std::string&& name, std::string&& locationName)
 	: ISite(std::move(name), std::move(locationName))
 {
 	mStorageElements.reserve(8);
 }
+
 auto CGridSite::CreateStorageElement(std::string&& name) -> CStorageElement*
 {
     CStorageElement* newStorageElement = new CStorageElement(std::move(name), this);
@@ -150,14 +142,15 @@ CStorageElement::CStorageElement(std::string&& name, ISite* const site)
 	mFileIds.reserve(50000);
 	mReplicas.reserve(50000);
 }
-auto CStorageElement::CreateReplica(SFile* const file) -> SReplica*
+
+auto CStorageElement::CreateReplica(SFile* const file) -> std::shared_ptr<SReplica>
 {
     const auto result = mFileIds.insert(file->GetId());
 
     if (!result.second)
         return nullptr;
 
-    SReplica* newReplica = new SReplica(file, this, mReplicas.size(), file->mReplicas.size());
+    std::shared_ptr<SReplica> newReplica(new SReplica(file, this, mReplicas.size(), file->mReplicas.size()));
     file->mReplicas.emplace_back(newReplica);
     mReplicas.push_back(newReplica);
 
@@ -200,6 +193,7 @@ CRucio::CRucio()
 {
     mFiles.reserve(150000);
 }
+
 auto CRucio::CreateFile(const std::uint32_t size, const TickType expiresAt) -> SFile*
 {
     SFile* newFile = new SFile(size, expiresAt);
@@ -212,6 +206,7 @@ auto CRucio::CreateGridSite(std::string&& name, std::string&& locationName) -> C
     mGridSites.emplace_back(newSite);
     return newSite;
 }
+
 auto CRucio::RunReaper(const TickType now) -> std::size_t
 {
     const std::size_t numFiles = mFiles.size();
