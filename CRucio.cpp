@@ -36,13 +36,53 @@ void SFile::Remove(SReplica* const replica, const TickType now)
     if(mReplicas.empty())
         mExpiresAt = 0;
 }
+auto SFile::RemoveExpiredReplicas(const TickType now) -> std::size_t
+{
+    const std::size_t numReplicas = mReplicas.size();
+
+    if(numReplicas < 2)
+        return 0; // do not delete last replica if file didnt expire
+
+    std::size_t frontIdx = 0;
+    std::size_t backIdx = numReplicas - 1;
+
+    while(backIdx > frontIdx && mReplicas[backIdx]->mExpiresAt <= now)
+    {
+        mReplicas[backIdx]->OnRemoveByFile(now);
+        mReplicas.pop_back();
+        --backIdx;
+    }
+
+    for(;frontIdx < backIdx; ++frontIdx)
+    {
+        std::unique_ptr<SReplica>& curReplica = mReplicas[frontIdx];
+        if(curReplica->mExpiresAt <= now)
+        {
+            std::swap(curReplica, mReplicas[backIdx]);
+            do
+            {
+                mReplicas[backIdx]->OnRemoveByFile(now);
+                mReplicas.pop_back();
+                --backIdx;
+            } while(backIdx > frontIdx && mReplicas[backIdx]->mExpiresAt <= now);
+        }
+    }
+
+    if(backIdx == 0 && mReplicas.back()->mExpiresAt <= now)
+    {
+        mReplicas[backIdx]->OnRemoveByFile(now);
+        mReplicas.pop_back();
+    }
+    return numReplicas - mReplicas.size();
+}
 
 
 SReplica::SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement, const std::size_t indexAtFile)
     : mFile(file),
       mStorageElement(storageElement),
       mIndexAtStorageElement(indexAtStorageElement),
-      mIndexAtFile(indexAtFile)
+      mIndexAtFile(indexAtFile),
+      mExpiresAt(file->mExpiresAt)
 {}
 auto SReplica::Increase(std::uint32_t amount, const TickType now) -> std::uint32_t
 {
@@ -112,7 +152,6 @@ CStorageElement::CStorageElement(std::string&& name, ISite* const site)
 }
 auto CStorageElement::CreateReplica(SFile* const file) -> SReplica*
 {
-    //const auto result = file->mStorageElements.insert(this);
     const auto result = mFileIds.insert(file->GetId());
 
     if (!result.second)
@@ -192,9 +231,10 @@ auto CRucio::RunReaper(const TickType now) -> std::size_t
 
     for(;frontIdx < backIdx; ++frontIdx)
     {
-        if(mFiles[frontIdx]->mExpiresAt <= now)
+        std::unique_ptr<SFile>& curFile = mFiles[frontIdx];
+        if(curFile->mExpiresAt <= now)
         {
-            std::swap(mFiles[frontIdx], mFiles[backIdx]);
+            std::swap(curFile, mFiles[backIdx]);
             do
             {
                 mFiles[backIdx]->Remove(now);
@@ -202,6 +242,8 @@ auto CRucio::RunReaper(const TickType now) -> std::size_t
                 --backIdx;
             } while(backIdx > frontIdx && mFiles[backIdx]->mExpiresAt <= now);
         }
+        else
+            curFile->RemoveExpiredReplicas(now);
     }
 
     if(backIdx == 0 && mFiles.back()->mExpiresAt <= now)
