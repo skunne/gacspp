@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <random>
 
+
 // comment out to use dynamic names
 #define STATIC_DB_NAME (":memory:")
 #define STATIC_DB_LOG_NAME ("sqlitedb.log")

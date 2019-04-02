@@ -174,7 +174,7 @@ public:
     void OnUpdate(const TickType now) final;
 };
 
-class CHearbeat : public CScheduleable
+class CHeartbeat : public CScheduleable
 {
 private:
     IBaseSim* mSim;
@@ -188,7 +188,7 @@ public:
     std::unordered_map<std::string, std::chrono::duration<double>*> mProccessDurations;
 
 public:
-    CHearbeat(IBaseSim* sim, std::shared_ptr<CTransferManager> g2cTransferMgr, std::shared_ptr<CTransferManager> c2cTransferMgr, const std::uint32_t tickFreq, const TickType startTick=0);
+    CHeartbeat(IBaseSim* sim, std::shared_ptr<CTransferManager> g2cTransferMgr, std::shared_ptr<CTransferManager> c2cTransferMgr, const std::uint32_t tickFreq, const TickType startTick=0);
 
     void OnUpdate(const TickType now) final;
 };

@@ -5,37 +5,16 @@
 #include "CRucio.hpp"
 #include "CCloudGCP.hpp"
 #include "CommonScheduleables.hpp"
-#include "CSimpleSim.hpp"
+#include "CAdvancedSim.hpp"
 
 #include "sqlite3.h"
 
 
-bool InsertSite(ISite* site)
-{
-    std::stringstream row;
-    row << site->GetId() << ",'"
-        << site->GetName() << "','"
-        << site->GetLocationName() << "'";
-    return COutput::GetRef().InsertRow("Sites", row.str());
-}
-bool InsertStorageElement(CStorageElement* storageElement)
-{
-    std::stringstream row;
-    row << storageElement->GetId() << ","
-        << storageElement->GetSite()->GetId() << ",'"
-        << storageElement->GetName() << "'";
-    return COutput::GetRef().InsertRow("StorageElements", row.str());
-}
-bool InsertLinkSelector(CLinkSelector* linkselector)
-{
-    std::stringstream row;
-    row << linkselector->GetId() << ","
-        << linkselector->GetSrcSiteId() << ","
-        << linkselector->GetDstSiteId();
-    return COutput::GetRef().InsertRow("LinkSelectors", row.str());
-}
+bool InsertSite(ISite* site);
+bool InsertStorageElement(CStorageElement* storageElement);
+bool InsertLinkSelector(CLinkSelector* linkselector);
 
-void CSimpleSim::SetupDefaults()
+void CAdvancedSim::SetupDefaults()
 {
     ////////////////////////////
     // init output db
@@ -71,7 +50,6 @@ void CSimpleSim::SetupDefaults()
             << "FOREIGN KEY(dstStorageElementId) REFERENCES StorageElements(id)";
     ok = output.CreateTable("Transfers", columns.str());
     assert(ok);
-    //INSERT INTO Transfers VALUES(?, ?, ?, ?, ?, ?);
 
     CStorageElement::mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Replicas VALUES(?, ?);");
 
@@ -110,30 +88,20 @@ void CSimpleSim::SetupDefaults()
     ////////////////////////////
     // setup scheuleables
     ////////////////////////////
-    std::shared_ptr<CDataGenerator> dataGen(new CDataGenerator(this, 50, 0));
+    std::shared_ptr<CDataGenerator> dataGen(new CDataGenerator(this, 75, 0));
     dataGen->mStorageElements = gridStoragleElements;
 
     std::shared_ptr<CReaper> reaper(new CReaper(mRucio.get(), 600, 600));
 
-    std::shared_ptr<CTransferManager> g2cTransferMgr(new CTransferManager(20, 100));
-    //std::shared_ptr<CTransferGeneratorUniform> g2cTransferGen(new CTransferGeneratorUniform(this, g2cTransferMgr.get(), 25));
-    std::shared_ptr<CTransferGeneratorExponential> g2cTransferGen(new CTransferGeneratorExponential(this, g2cTransferMgr.get(), 25));
-    g2cTransferGen->mSrcStorageElements = gridStoragleElements;
-    g2cTransferGen->mTransferNumberGen->mSoftmaxScale = 15;
-    g2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 500;
-    g2cTransferGen->mOverrideExpiration = true;
+    std::shared_ptr<CTransferManager> x2cTransferMgr(new CTransferManager(20, 100));
+    std::shared_ptr<CTransferGeneratorSrcPrio> x2cTransferGen(new CTransferGeneratorSrcPrio(this, x2cTransferMgr.get(), 25));
+    x2cTransferGen->mTransferNumberGen->mSoftmaxScale = 10;
+    x2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 75;
 
-    std::shared_ptr<CTransferManager> c2cTransferMgr(new CTransferManager(20, 100));
-    std::shared_ptr<CTransferGeneratorExponential> c2cTransferGen(new CTransferGeneratorExponential(this, c2cTransferMgr.get(), 25));
-    c2cTransferGen->mTransferNumberGen->mSoftmaxScale = 10;
-    c2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 40;
-
-    std::shared_ptr<CHeartbeat> heartbeat(new CHeartbeat(this, g2cTransferMgr, c2cTransferMgr, 10000, 10000));
+    std::shared_ptr<CHeartbeat> heartbeat(new CHeartbeat(this, x2cTransferMgr, x2cTransferMgr, 10000, 10000));
     heartbeat->mProccessDurations["DataGen"] = &(dataGen->mUpdateDurationSummed);
-    heartbeat->mProccessDurations["G2CTransferUpdate"] = &(g2cTransferMgr->mUpdateDurationSummed);
-    heartbeat->mProccessDurations["G2CTransferGen"] = &(g2cTransferGen->mUpdateDurationSummed);
-    heartbeat->mProccessDurations["C2CTransferUpdate"] = &(c2cTransferMgr->mUpdateDurationSummed);
-    heartbeat->mProccessDurations["C2CTransferGen"] = &(c2cTransferGen->mUpdateDurationSummed);
+    heartbeat->mProccessDurations["X2CTransferUpdate"] = &(x2cTransferMgr->mUpdateDurationSummed);
+    heartbeat->mProccessDurations["X2CTransferGen"] = &(x2cTransferGen->mUpdateDurationSummed);
     heartbeat->mProccessDurations["Reaper"] = &(reaper->mUpdateDurationSummed);
 
 
@@ -145,6 +113,7 @@ void CSimpleSim::SetupDefaults()
         {
             ok = InsertStorageElement(storageElement.get());
             assert(ok);
+            x2cTransferGen->mSrcStorageElementIdToPrio[storageElement->GetId()] = 0;
         }
         for(std::unique_ptr<CLinkSelector>& linkselector : gridSite->mLinkSelectors)
         {
@@ -163,9 +132,8 @@ void CSimpleSim::SetupDefaults()
         {
             ok = InsertStorageElement(bucket.get());
             assert(ok);
-            g2cTransferGen->mDstStorageElements.push_back(bucket.get());
-            c2cTransferGen->mSrcStorageElements.push_back(bucket.get());
-            c2cTransferGen->mDstStorageElements.push_back(bucket.get());
+            x2cTransferGen->mSrcStorageElementIdToPrio[bucket->GetId()] = 1;
+            x2cTransferGen->mDstStorageElements.push_back(bucket.get());
         }
         for(std::unique_ptr<CLinkSelector>& linkselector : region->mLinkSelectors)
         {
@@ -176,9 +144,7 @@ void CSimpleSim::SetupDefaults()
 
     mSchedule.push(dataGen);
     mSchedule.push(reaper);
-    mSchedule.push(g2cTransferMgr);
-    mSchedule.push(g2cTransferGen);
-    mSchedule.push(c2cTransferMgr);
-    mSchedule.push(c2cTransferGen);
+    mSchedule.push(x2cTransferMgr);
+    mSchedule.push(x2cTransferGen);
     mSchedule.push(heartbeat);
 }

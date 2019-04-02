@@ -7,6 +7,7 @@
 #include "CCloudGCP.hpp"
 #include "COutput.hpp"
 #include "CSimpleSim.hpp"
+#include "CAdvancedSim.hpp"
 
 
 int main(int argc, char** argv)
@@ -31,7 +32,7 @@ int main(int argc, char** argv)
         maxTick = 3600 * 24 * static_cast<TickType>(std::stoul(argv[1]));
         std::cout<<"MaxTick="<<maxTick<<std::endl;
     }
-    std::unique_ptr<CSimpleSim> sim(new CSimpleSim);
+    std::unique_ptr<IBaseSim> sim(new CSimpleSim);//sim(new CAdvancedSim);//
     sim->mClouds.emplace_back(new gcp::CCloud("GCP"));
     sim->SetupDefaults();
 

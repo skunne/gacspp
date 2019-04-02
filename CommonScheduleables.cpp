@@ -475,7 +475,7 @@ void CTransferGeneratorSrcPrio::OnUpdate(const TickType now)
 
 
 
-CHearbeat::CHearbeat(IBaseSim* sim, std::shared_ptr<CTransferManager> g2cTransferMgr, std::shared_ptr<CTransferManager> c2cTransferMgr, const std::uint32_t tickFreq, const TickType startTick)
+CHeartbeat::CHeartbeat(IBaseSim* sim, std::shared_ptr<CTransferManager> g2cTransferMgr, std::shared_ptr<CTransferManager> c2cTransferMgr, const std::uint32_t tickFreq, const TickType startTick)
     : CScheduleable(startTick),
       mSim(sim),
       mG2CTransferMgr(g2cTransferMgr),
@@ -485,7 +485,7 @@ CHearbeat::CHearbeat(IBaseSim* sim, std::shared_ptr<CTransferManager> g2cTransfe
     mTimeLastUpdate = std::chrono::high_resolution_clock::now();
 }
 
-void CHearbeat::OnUpdate(const TickType now)
+void CHeartbeat::OnUpdate(const TickType now)
 {
     auto curRealtime = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> timeDiff = curRealtime - mTimeLastUpdate;

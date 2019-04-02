@@ -5,7 +5,7 @@
 void IBaseSim::Run(const TickType maxTick)
 {
     mCurrentTick = 0;
-    while(mCurrentTick<maxTick && !mSchedule.empty())
+    while(mCurrentTick<=maxTick && !mSchedule.empty())
     {
         std::shared_ptr<CScheduleable> element = mSchedule.top();
         mSchedule.pop();
