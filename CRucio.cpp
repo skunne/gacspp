@@ -63,11 +63,10 @@ auto SFile::RemoveExpiredReplicas(const TickType now) -> std::size_t
 
 
 
-SReplica::SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement, const std::size_t indexAtFile)
+SReplica::SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement)
     : mFile(file),
       mStorageElement(storageElement),
       mIndexAtStorageElement(indexAtStorageElement),
-      mIndexAtFile(indexAtFile),
       mExpiresAt(file->mExpiresAt)
 {}
 
@@ -150,7 +149,7 @@ auto CStorageElement::CreateReplica(SFile* const file) -> std::shared_ptr<SRepli
     if (!result.second)
         return nullptr;
 
-    std::shared_ptr<SReplica> newReplica(new SReplica(file, this, mReplicas.size(), file->mReplicas.size()));
+    std::shared_ptr<SReplica> newReplica(new SReplica(file, this, mReplicas.size()));
     file->mReplicas.emplace_back(newReplica);
     mReplicas.push_back(newReplica);
 

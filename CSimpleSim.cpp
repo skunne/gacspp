@@ -428,7 +428,6 @@ public:
 
     void OnUpdate(const TickType now) final
     {
-        //std::cout<<mOverrideExpiration<<std::endl;
         auto curRealtime = std::chrono::high_resolution_clock::now();
 
         const std::size_t numSrcStorageElements = mSrcStorageElements.size();
@@ -486,7 +485,95 @@ public:
 
         mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
         mNextCallTick = now + mTickFreq;
-        //std::cout<<"done"<<std::endl;
+    }
+};
+class CTransferGeneratorSrcPrio : public CScheduleable
+{
+private:
+    IBaseSim* mSim;
+    CTransferManager* mTransferMgr;
+    std::uint32_t mTickFreq;
+
+public:
+    std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
+    std::unordered_map<IdType, int> mSrcStorageElementIdToPrio;
+    std::vector<CStorageElement*> mDstStorageElements;
+
+    CTransferGeneratorSrcPrio(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const TickType startTick=0)
+        : CScheduleable(startTick),
+          mSim(sim),
+          mTransferMgr(transferMgr),
+          mTickFreq(tickFreq),
+          mTransferNumberGen(new CTransferNumberGenerator(1, 1, tickFreq, 0.075))
+    {}
+
+    void OnUpdate(const TickType now) final
+    {
+        auto curRealtime = std::chrono::high_resolution_clock::now();
+
+        const std::vector<std::unique_ptr<SFile>>& allFiles = mSim->mRucio->mFiles;
+        const std::size_t numDstStorageElements = mDstStorageElements.size();
+        assert(allFiles.size() > 0 && numDstStorageElements > 0);
+
+        IBaseSim::RNGEngineType& rngEngine = mSim->mRNGEngine;
+        std::exponential_distribution<double> dstStorageElementRndSelecter(0.25);
+        std::uniform_int_distribution<std::size_t> fileRndSelector(0, allFiles.size() - 1);
+
+        const std::uint32_t numActive = static_cast<std::uint32_t>(mTransferMgr->GetNumActiveTransfers());
+        const std::uint32_t numToCreate = mTransferNumberGen->GetNumToCreate(rngEngine, numActive, now);
+
+        std::shared_ptr<CInsertStatements> replicaInsertStmts(new CInsertStatements(CStorageElement::mOutputQueryIdx, numToCreate * 2));
+
+        for(std::uint32_t totalTransfersCreated=0; totalTransfersCreated<numToCreate; ++totalTransfersCreated)
+        {
+            CStorageElement* const dstStorageElement = mDstStorageElements[static_cast<std::size_t>(dstStorageElementRndSelecter(rngEngine) * 2) % numDstStorageElements];
+            SFile* const fileToTransfer = allFiles[fileRndSelector(rngEngine)].get();
+            const std::vector<std::shared_ptr<SReplica>>& replicas = fileToTransfer->mReplicas;
+
+            assert(replicas.size() > 0);
+
+            std::shared_ptr<SReplica> newReplica = dstStorageElement->CreateReplica(fileToTransfer);
+            if(newReplica != nullptr)
+            {
+                int minPrio = 1000000;
+                std::vector<std::shared_ptr<SReplica>> bestSrcReplicas;
+                for(const std::shared_ptr<SReplica>& replica : replicas)
+                {
+                    if(!replica->IsComplete())
+                        continue; // at least the newly created one will be skipped
+
+                    const auto result = mSrcStorageElementIdToPrio.find(replica->GetStorageElement()->GetId());
+                    if(result != mSrcStorageElementIdToPrio.cend())
+                    {
+                        if(result->second < minPrio)
+                        {
+                            minPrio = result->second;
+                            bestSrcReplicas.clear();
+                            bestSrcReplicas.push_back(replica);
+                        }
+                        else if(result->second == minPrio)
+                            bestSrcReplicas.push_back(replica);
+                    }
+                }
+
+                assert(bestSrcReplicas.size() > 0);
+
+                replicaInsertStmts->AddValue(fileToTransfer->GetId());
+                replicaInsertStmts->AddValue(dstStorageElement->GetId());
+
+                mTransferMgr->CreateTransfer(bestSrcReplicas[0], newReplica, now);
+            }
+            else
+            {
+                //replica already exists
+            }
+        }
+
+        COutput::GetRef().QueueInserts(replicaInsertStmts);
+        //std::cout<<"["<<now<<"]: numActive: "<<numActive<<"; numToCreate: "<<numToCreate<<std::endl;
+
+        mUpdateDurationSummed += std::chrono::high_resolution_clock::now() - curRealtime;
+        mNextCallTick = now + mTickFreq;
     }
 };
 class CHearbeat : public CScheduleable
@@ -660,17 +747,17 @@ void CSimpleSim::SetupDefaults()
                 bnl->CreateStorageElement("BNL_DATADISK")
             };
 
-    for(auto& cloud : mClouds)
+    for(std::unique_ptr<IBaseCloud>& cloud : mClouds)
     {
         cloud->SetupDefaultCloud();
-        for(auto& gridSite : mRucio->mGridSites)
+        for(std::unique_ptr<CGridSite>& gridSite : mRucio->mGridSites)
         {
-            for(auto& cloudSite : cloud->mRegions)
+            for(std::unique_ptr<ISite>& cloudSite : cloud->mRegions)
             {
                 auto region = dynamic_cast<gcp::CRegion*>(cloudSite.get());
                 gridSite->CreateLinkSelector(region, ONE_GiB / 32);
                 region->CreateLinkSelector(gridSite.get(), ONE_GiB / 128);
-                for (auto& bucket : region->mStorageElements)
+                for (std::unique_ptr<gcp::CBucket>& bucket : region->mStorageElements)
                     g2cTransferGen->mDstStorageElements.push_back(bucket.get());
             }
         }

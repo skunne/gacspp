@@ -2,6 +2,10 @@
 
 #include <cstdint>
 
+// comment out to use dynamic names
+#define STATIC_DB_NAME (":memory:")
+#define STATIC_DB_LOG_NAME ("sqlitedb.log")
+
 #define PI (3.14159265359)
 
 #define ONE_MiB (1048576.0) //2^20

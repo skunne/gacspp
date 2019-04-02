@@ -90,11 +90,10 @@ public:
 
 public:
     std::size_t mIndexAtStorageElement;
-    std::size_t mIndexAtFile;
 
     TickType mExpiresAt;
 
-    SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement, const std::size_t indexAtFile);
+    SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement);
 
     SReplica(SReplica&&) = default;
     SReplica& operator=(SReplica&&) = default;
