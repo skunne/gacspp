@@ -98,7 +98,7 @@ void CAdvancedSim::SetupDefaults()
     x2cTransferGen->mTransferNumberGen->mSoftmaxScale = 10;
     x2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 75;
 
-    std::shared_ptr<CHeartbeat> heartbeat(new CHeartbeat(this, x2cTransferMgr, x2cTransferMgr, 10000, 10000));
+    std::shared_ptr<CHeartbeat> heartbeat(new CHeartbeat(this, x2cTransferMgr, x2cTransferMgr, SECONDS_PER_DAY, SECONDS_PER_DAY));
     heartbeat->mProccessDurations["DataGen"] = &(dataGen->mUpdateDurationSummed);
     heartbeat->mProccessDurations["X2CTransferUpdate"] = &(x2cTransferMgr->mUpdateDurationSummed);
     heartbeat->mProccessDurations["X2CTransferGen"] = &(x2cTransferGen->mUpdateDurationSummed);

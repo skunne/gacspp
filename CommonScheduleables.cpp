@@ -424,14 +424,19 @@ void CTransferGeneratorSrcPrio::OnUpdate(const TickType now)
     for(std::uint32_t totalTransfersCreated=0; totalTransfersCreated<numToCreate; ++totalTransfersCreated)
     {
         CStorageElement* const dstStorageElement = mDstStorageElements[static_cast<std::size_t>(dstStorageElementRndSelecter(rngEngine) * 2) % numDstStorageElements];
-        SFile* const fileToTransfer = allFiles[fileRndSelector(rngEngine)].get();
-        const std::vector<std::shared_ptr<SReplica>>& replicas = fileToTransfer->mReplicas;
+        SFile* fileToTransfer = allFiles[fileRndSelector(rngEngine)].get();
 
-        assert(replicas.size() > 0);
+        for(std::uint32_t i=0; i<5 && fileToTransfer->mReplicas.empty(); ++i)
+            fileToTransfer = allFiles[fileRndSelector(rngEngine)].get();
+
+        const std::vector<std::shared_ptr<SReplica>>& replicas = fileToTransfer->mReplicas;
+        if(replicas.empty())
+            continue;
 
         std::shared_ptr<SReplica> newReplica = dstStorageElement->CreateReplica(fileToTransfer);
         if(newReplica != nullptr)
         {
+            newReplica->mExpiresAt = now + SECONDS_PER_DAY;
             int minPrio = 1000000;
             std::vector<std::shared_ptr<SReplica>> bestSrcReplicas;
             for(const std::shared_ptr<SReplica>& replica : replicas)
@@ -453,7 +458,8 @@ void CTransferGeneratorSrcPrio::OnUpdate(const TickType now)
                 }
             }
 
-            assert(bestSrcReplicas.size() > 0);
+            if(bestSrcReplicas.empty())
+                continue;
 
             replicaInsertStmts->AddValue(fileToTransfer->GetId());
             replicaInsertStmts->AddValue(dstStorageElement->GetId());

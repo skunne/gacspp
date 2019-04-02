@@ -32,7 +32,7 @@ int main(int argc, char** argv)
         maxTick = 3600 * 24 * static_cast<TickType>(std::stoul(argv[1]));
         std::cout<<"MaxTick="<<maxTick<<std::endl;
     }
-    std::unique_ptr<IBaseSim> sim(new CSimpleSim);//sim(new CAdvancedSim);//
+    std::unique_ptr<IBaseSim> sim(new CAdvancedSim);//sim(new CSimpleSim);//
     sim->mClouds.emplace_back(new gcp::CCloud("GCP"));
     sim->SetupDefaults();
 
