@@ -32,7 +32,7 @@ namespace gcp
         TickType timeOffset = mTimeAtLastReset;
         TickType usedStorageAtGivenTime = mStorageAtLastReset;
 		mBucketEvents.emplace_back(now, 0);
-		for (const auto &storageEvent : mBucketEvents)
+		for (const std::pair<TickType, std::int64_t>& storageEvent : mBucketEvents)
 		{
 			assert(storageEvent.first >= timeOffset);
 			const double timeDiff = storageEvent.first - timeOffset;
@@ -79,14 +79,14 @@ namespace gcp
 	double CRegion::CalculateStorageCosts(TickType now)
 	{
 		double regionStorageCosts = 0;
-		for (auto& bucket : mStorageElements)
+		for (std::unique_ptr<CBucket>& bucket : mStorageElements)
 			regionStorageCosts += bucket->CalculateStorageCosts(now);
 		return regionStorageCosts;
 	}
 	double CRegion::CalculateNetworkCosts(double& sumUsedTraffic, std::uint64_t& sumDoneTransfers)
 	{
 		double regionNetworkCosts = 0;
-		for (auto& linkSelector : mLinkSelectors)
+		for (std::unique_ptr<CLinkSelector>& linkSelector : mLinkSelectors)
 		{
             double costs = CalculateNetworkCostsRecursive(linkSelector->mUsedTraffic, linkSelector->mNetworkPrice.cbegin(), linkSelector->mNetworkPrice.cend());
 
@@ -114,7 +114,7 @@ namespace gcp
 		double totalNetworkCosts = 0;
         double sumUsedTraffic = 0;
         std::uint64_t sumDoneTransfer = 0;
-		for (auto& site : mRegions)
+		for (std::unique_ptr<ISite>& site : mRegions)
 		{
 			auto region = dynamic_cast<CRegion*>(site.get());
 			assert(region != nullptr);
@@ -171,7 +171,7 @@ namespace gcp
 		CreateRegion(4, "us-east1", "South Carolina", 0.01978300, "E5F0-6A5D-7BAD");
 		CreateRegion(4, "us-east4", "Northern Virginia", 0.02275045, "5F7A-5173-CF5B");
 
-		for(auto& site : mRegions)
+		for(std::unique_ptr<ISite>& site : mRegions)
 		{
 			auto region = dynamic_cast<CRegion*>(site.get());
 			assert(region != nullptr);
@@ -243,16 +243,16 @@ namespace gcp
 			{ 3, { { 4,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } } } }
 		};
 
-		for (auto& srcSite : mRegions)
+		for (std::unique_ptr<ISite>& srcSite : mRegions)
 		{
 			auto srcRegion = dynamic_cast<CRegion*>(srcSite.get());
 			assert(srcRegion != nullptr);
-			const auto srcRegionMultiLocationIdx = srcRegion->GetMultiLocationIdx();
-			for (auto& dstSite : mRegions)
+			const std::uint32_t srcRegionMultiLocationIdx = srcRegion->GetMultiLocationIdx();
+			for (std::unique_ptr<ISite>& dstSite : mRegions)
 			{
 				auto dstRegion = dynamic_cast<CRegion*>(dstSite.get());
 				assert(dstRegion != nullptr);
-				const auto dstRegionMultiLocationIdx = dstRegion->GetMultiLocationIdx();
+				const std::uint32_t dstRegionMultiLocationIdx = dstRegion->GetMultiLocationIdx();
 				const bool isSameLocation = (*srcRegion) == (*dstRegion);
 				if (!isSameLocation && (srcRegionMultiLocationIdx != dstRegionMultiLocationIdx))
 				{

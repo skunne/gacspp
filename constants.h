@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <random>
 
 // comment out to use dynamic names
 #define STATIC_DB_NAME (":memory:")
@@ -17,6 +18,8 @@
 #define SECONDS_PER_MONTH (SECONDS_PER_DAY * 30.0)
 #define SECONDS_TO_MONTHS(x) ((x)/SECONDS_PER_MONTH)
 #define DAYS_TO_SECONDS(x) ((x) * SECONDS_PER_DAY)
+
+typedef std::minstd_rand RNGEngineType;
 
 typedef std::uint64_t TickType;
 typedef std::uint64_t IdType;

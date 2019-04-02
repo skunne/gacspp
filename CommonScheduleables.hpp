@@ -1,0 +1,194 @@
+#include <chrono>
+#include <random>
+#include <unordered_map>
+
+#include "constants.h"
+#include "CScheduleable.hpp"
+
+class IBaseSim;
+class CRucio;
+class CStorageElement;
+class CLinkSelector;
+struct SReplica;
+
+
+class CDataGenerator : public CScheduleable
+{
+private:
+    std::size_t mOutputQueryIdx;
+
+    IBaseSim* mSim;
+
+    std::normal_distribution<float> mNumFilesRNG {40, 1};
+    std::normal_distribution<double> mFileSizeRNG {1.5, 0.25};
+    std::normal_distribution<float> mFileLifetimeRNG {6, 1};
+
+    std::uint32_t mTickFreq;
+
+    std::uint32_t GetRandomFileSize();
+    std::uint32_t GetRandomNumFilesToGenerate();
+    TickType GetRandomLifeTime();
+
+    std::uint64_t CreateFilesAndReplicas(const std::uint32_t numFiles, const std::uint32_t numReplicasPerFile, const TickType now);
+
+public:
+    std::vector<CStorageElement*> mStorageElements;
+    CDataGenerator(IBaseSim* sim, const std::uint32_t tickFreq, const TickType startTick=0);
+
+    void OnUpdate(const TickType now) final;
+};
+
+class CReaper : public CScheduleable
+{
+private:
+    CRucio *mRucio;
+    std::uint32_t mTickFreq;
+
+public:
+    CReaper(CRucio *rucio, const std::uint32_t tickFreq, const TickType startTick=600);
+
+    void OnUpdate(const TickType now) final;
+};
+
+class CBillingGenerator : public CScheduleable
+{
+private:
+    IBaseSim* mSim;
+    std::uint32_t mTickFreq;
+
+public:
+    CBillingGenerator(IBaseSim* sim, const std::uint32_t tickFreq=SECONDS_PER_MONTH, const TickType startTick=SECONDS_PER_MONTH);
+
+    void OnUpdate(const TickType now) final;
+};
+
+class CTransferManager : public CScheduleable
+{
+private:
+    std::size_t mOutputQueryIdx;
+
+    TickType mLastUpdated = 0;
+    std::uint32_t mTickFreq;
+
+    struct STransfer
+    {
+        std::shared_ptr<SReplica> mSrcReplica;
+        std::shared_ptr<SReplica> mDstReplica;
+        CLinkSelector* mLinkSelector;
+        TickType mStartTick;
+
+        STransfer(std::shared_ptr<SReplica>& srcReplica, std::shared_ptr<SReplica>& dstReplica, CLinkSelector* const linkSelector, TickType startTick)
+            : mSrcReplica(srcReplica),
+              mDstReplica(dstReplica),
+              mLinkSelector(linkSelector),
+              mStartTick(startTick)
+        {}
+    };
+
+    std::vector<STransfer> mActiveTransfers;
+
+public:
+    std::uint32_t mNumCompletedTransfers = 0;
+    TickType mSummedTransferDuration = 0;
+
+public:
+    CTransferManager(const std::uint32_t tickFreq, const TickType startTick=0);
+
+    void OnUpdate(const TickType now) final;
+
+    void CreateTransfer(std::shared_ptr<SReplica>& srcReplica, std::shared_ptr<SReplica>& dstReplica, const TickType now);
+
+    inline auto GetNumActiveTransfers() const -> std::size_t
+    {return mActiveTransfers.size();}
+};
+
+class CTransferNumberGenerator
+{
+public:
+    double mSoftmaxScale;
+    double mSoftmaxOffset;
+    double mAlpha = 1.0/30.0 * PI/180.0 * 0.075;
+
+    std::normal_distribution<double> mSoftmaxRNG {0, 1};
+    std::normal_distribution<double> mPeakinessRNG {1.05, 0.04};
+
+public:
+    CTransferNumberGenerator(const double softmaxScale, const double softmaxOffset, const std::uint32_t samplingFreq, const double baseFreq);
+
+    auto GetNumToCreate(RNGEngineType& rngEngine, std::uint32_t numActive, const TickType now) -> std::uint32_t;
+};
+
+class CTransferGeneratorUniform : public CScheduleable
+{
+private:
+    IBaseSim* mSim;
+    CTransferManager* mTransferMgr;
+    std::uint32_t mTickFreq;
+
+public:
+    std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
+    std::vector<CStorageElement*> mSrcStorageElements;
+    std::vector<CStorageElement*> mDstStorageElements;
+
+public:
+    CTransferGeneratorUniform(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const TickType startTick=0);
+
+    void OnUpdate(const TickType now) final;
+};
+
+class CTransferGeneratorExponential : public CScheduleable
+{
+private:
+    IBaseSim* mSim;
+    CTransferManager* mTransferMgr;
+    std::uint32_t mTickFreq;
+
+public:
+    bool mOverrideExpiration = false;
+
+    std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
+    std::vector<CStorageElement*> mSrcStorageElements;
+    std::vector<CStorageElement*> mDstStorageElements;
+
+public:
+    CTransferGeneratorExponential(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const TickType startTick=0);
+
+    void OnUpdate(const TickType now) final;
+};
+
+class CTransferGeneratorSrcPrio : public CScheduleable
+{
+private:
+    IBaseSim* mSim;
+    CTransferManager* mTransferMgr;
+    std::uint32_t mTickFreq;
+
+public:
+    std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
+    std::unordered_map<IdType, int> mSrcStorageElementIdToPrio;
+    std::vector<CStorageElement*> mDstStorageElements;
+
+public:
+    CTransferGeneratorSrcPrio(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const TickType startTick=0);
+
+    void OnUpdate(const TickType now) final;
+};
+
+class CHearbeat : public CScheduleable
+{
+private:
+    IBaseSim* mSim;
+    std::shared_ptr<CTransferManager> mG2CTransferMgr;
+    std::shared_ptr<CTransferManager> mC2CTransferMgr;
+    std::uint32_t mTickFreq;
+
+    std::chrono::high_resolution_clock::time_point mTimeLastUpdate;
+
+public:
+    std::unordered_map<std::string, std::chrono::duration<double>*> mProccessDurations;
+
+public:
+    CHearbeat(IBaseSim* sim, std::shared_ptr<CTransferManager> g2cTransferMgr, std::shared_ptr<CTransferManager> c2cTransferMgr, const std::uint32_t tickFreq, const TickType startTick=0);
+
+    void OnUpdate(const TickType now) final;
+};

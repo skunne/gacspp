@@ -13,8 +13,6 @@ class CRucio;
 class IBaseSim
 {
 public:
-    typedef std::minstd_rand RNGEngineType;
-
     //std::random_device rngDevice;
     RNGEngineType mRNGEngine {42};
 
