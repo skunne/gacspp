@@ -83,15 +83,6 @@ private:
     std::uint32_t mCurSize = 0;
 
 public:
-    enum STATE
-    {
-        TRANSFERRING,
-        COMPLETE,
-        DELETED
-    };
-    STATE mState = TRANSFERRING;
-
-public:
     std::size_t mIndexAtStorageElement;
 
     TickType mExpiresAt;
@@ -109,9 +100,7 @@ public:
 	void Remove(const TickType now);
 
 	inline bool IsComplete() const
-	{return mState == COMPLETE;}
-	inline bool IsDeleted() const
-	{return mState == DELETED;}
+	{return mCurSize == mFile->GetSize();}
 
     inline auto GetFile() -> SFile*
     {return mFile;}

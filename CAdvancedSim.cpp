@@ -57,7 +57,7 @@ void CAdvancedSim::SetupDefaults()
     ////////////////////////////
     // setup grid and clouds
     ////////////////////////////
-    mRucio.reset(new CRucio);
+    mRucio = std::make_unique<CRucio>();
 
     CGridSite* asgc = mRucio->CreateGridSite("ASGC", "asia");
     CGridSite* cern = mRucio->CreateGridSite("CERN", "europe");
@@ -69,73 +69,72 @@ void CAdvancedSim::SetupDefaults()
                 bnl->CreateStorageElement("BNL_DATADISK")
             };
 
-    for(std::unique_ptr<IBaseCloud>& cloud : mClouds)
+    for(const std::unique_ptr<IBaseCloud>& cloud : mClouds)
     {
         cloud->SetupDefaultCloud();
-        for(std::unique_ptr<CGridSite>& gridSite : mRucio->mGridSites)
+        for(const std::unique_ptr<CGridSite>& gridSite : mRucio->mGridSites)
         {
-            for(std::unique_ptr<ISite>& cloudSite : cloud->mRegions)
+            for(const std::unique_ptr<ISite>& cloudSite : cloud->mRegions)
             {
                 auto region = dynamic_cast<gcp::CRegion*>(cloudSite.get());
                 gridSite->CreateLinkSelector(region, ONE_GiB / 32);
                 region->CreateLinkSelector(gridSite.get(), ONE_GiB / 128);
             }
         }
-        mSchedule.emplace(new CBillingGenerator(this));
+        mSchedule.push(std::make_shared<CBillingGenerator>(this));
     }
 
 
     ////////////////////////////
     // setup scheuleables
     ////////////////////////////
-    std::shared_ptr<CDataGenerator> dataGen(new CDataGenerator(this, 75, 0));
+    auto dataGen = std::make_shared<CDataGenerator>(this, 50, 0);
     dataGen->mStorageElements = gridStoragleElements;
 
-    std::shared_ptr<CReaper> reaper(new CReaper(mRucio.get(), 600, 600));
+    auto reaper = std::make_shared<CReaper>(mRucio.get(), 600, 600);
 
-    std::shared_ptr<CTransferManager> x2cTransferMgr(new CTransferManager(20, 100));
-    std::shared_ptr<CTransferGeneratorSrcPrio> x2cTransferGen(new CTransferGeneratorSrcPrio(this, x2cTransferMgr.get(), 25));
-    x2cTransferGen->mTransferNumberGen->mSoftmaxScale = 12;
-    x2cTransferGen->mTransferNumberGen->mSoftmaxOffset = 200;
+    auto x2cTransferMgr = std::make_shared<CTransferManager>(20, 100);
+    auto x2cTransferNumGen = std::make_shared<CWavedTransferNumGen>(12, 200, 25, 0.075);
+    auto x2cTransferGen = std::make_shared<CSrcPrioTransferGen>(this, x2cTransferMgr, x2cTransferNumGen, 25);
 
-    std::shared_ptr<CHeartbeat> heartbeat(new CHeartbeat(this, x2cTransferMgr, x2cTransferMgr, SECONDS_PER_DAY, SECONDS_PER_DAY));
+    auto heartbeat = std::make_shared<CHeartbeat>(this, x2cTransferMgr, x2cTransferMgr, SECONDS_PER_DAY, SECONDS_PER_DAY);
     heartbeat->mProccessDurations["DataGen"] = &(dataGen->mUpdateDurationSummed);
     heartbeat->mProccessDurations["X2CTransferUpdate"] = &(x2cTransferMgr->mUpdateDurationSummed);
     heartbeat->mProccessDurations["X2CTransferGen"] = &(x2cTransferGen->mUpdateDurationSummed);
     heartbeat->mProccessDurations["Reaper"] = &(reaper->mUpdateDurationSummed);
 
 
-    for(std::unique_ptr<CGridSite>& gridSite : mRucio->mGridSites)
+    for(const std::unique_ptr<CGridSite>& gridSite : mRucio->mGridSites)
     {
         ok = InsertSite(gridSite.get());
         assert(ok);
-        for(std::unique_ptr<CStorageElement>& storageElement : gridSite->mStorageElements)
+        for(const std::unique_ptr<CStorageElement>& storageElement : gridSite->mStorageElements)
         {
             ok = InsertStorageElement(storageElement.get());
             assert(ok);
             x2cTransferGen->mSrcStorageElementIdToPrio[storageElement->GetId()] = 0;
         }
-        for(std::unique_ptr<CLinkSelector>& linkselector : gridSite->mLinkSelectors)
+        for(const std::unique_ptr<CLinkSelector>& linkselector : gridSite->mLinkSelectors)
         {
             ok = InsertLinkSelector(linkselector.get());
             assert(ok);
         }
     }
 
-    for(std::unique_ptr<ISite>& cloudSite : mClouds[0]->mRegions)
+    for(const std::unique_ptr<ISite>& cloudSite : mClouds[0]->mRegions)
     {
         auto region = dynamic_cast<gcp::CRegion*>(cloudSite.get());
         assert(region);
         ok = InsertSite(region);
         assert(ok);
-        for (std::unique_ptr<gcp::CBucket>& bucket : region->mStorageElements)
+        for (const std::unique_ptr<gcp::CBucket>& bucket : region->mStorageElements)
         {
             ok = InsertStorageElement(bucket.get());
             assert(ok);
             x2cTransferGen->mSrcStorageElementIdToPrio[bucket->GetId()] = 1;
             x2cTransferGen->mDstStorageElements.push_back(bucket.get());
         }
-        for(std::unique_ptr<CLinkSelector>& linkselector : region->mLinkSelectors)
+        for(const std::unique_ptr<CLinkSelector>& linkselector : region->mLinkSelectors)
         {
             ok = InsertLinkSelector(linkselector.get());
             assert(ok);

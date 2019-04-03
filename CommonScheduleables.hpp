@@ -72,12 +72,12 @@ private:
 
     struct STransfer
     {
-        std::shared_ptr<SReplica> mSrcReplica;
-        std::shared_ptr<SReplica> mDstReplica;
+        std::weak_ptr<SReplica> mSrcReplica;
+        std::weak_ptr<SReplica> mDstReplica;
         CLinkSelector* mLinkSelector;
         TickType mStartTick;
 
-        STransfer(std::shared_ptr<SReplica>& srcReplica, std::shared_ptr<SReplica>& dstReplica, CLinkSelector* const linkSelector, TickType startTick)
+        STransfer(std::shared_ptr<SReplica> srcReplica, std::shared_ptr<SReplica> dstReplica, CLinkSelector* const linkSelector, TickType startTick)
             : mSrcReplica(srcReplica),
               mDstReplica(dstReplica),
               mLinkSelector(linkSelector),
@@ -96,13 +96,19 @@ public:
 
     void OnUpdate(const TickType now) final;
 
-    void CreateTransfer(std::shared_ptr<SReplica>& srcReplica, std::shared_ptr<SReplica>& dstReplica, const TickType now);
+    void CreateTransfer(std::shared_ptr<SReplica> srcReplica, std::shared_ptr<SReplica> dstReplica, const TickType now);
 
     inline auto GetNumActiveTransfers() const -> std::size_t
     {return mActiveTransfers.size();}
 };
 
-class CTransferNumberGenerator
+class CBaseTransferNumGen
+{
+public:
+    virtual auto GetNumToCreate(RNGEngineType& rngEngine, std::uint32_t numActive, const TickType now) -> std::uint32_t = 0;
+};
+
+class CWavedTransferNumGen : public CBaseTransferNumGen
 {
 public:
     double mSoftmaxScale;
@@ -113,66 +119,78 @@ public:
     std::normal_distribution<double> mPeakinessRNG {1.05, 0.04};
 
 public:
-    CTransferNumberGenerator(const double softmaxScale, const double softmaxOffset, const std::uint32_t samplingFreq, const double baseFreq);
+    CWavedTransferNumGen(const double softmaxScale, const double softmaxOffset, const std::uint32_t samplingFreq, const double baseFreq);
 
     auto GetNumToCreate(RNGEngineType& rngEngine, std::uint32_t numActive, const TickType now) -> std::uint32_t;
 };
 
-class CTransferGeneratorUniform : public CScheduleable
+class CUniformTransferGen : public CScheduleable
 {
 private:
     IBaseSim* mSim;
-    CTransferManager* mTransferMgr;
+    std::shared_ptr<CTransferManager> mTransferMgr;
     std::uint32_t mTickFreq;
 
 public:
-    std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
+    std::shared_ptr<CBaseTransferNumGen> mTransferNumGen;
     std::vector<CStorageElement*> mSrcStorageElements;
     std::vector<CStorageElement*> mDstStorageElements;
 
 public:
-    CTransferGeneratorUniform(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const TickType startTick=0);
+    CUniformTransferGen(IBaseSim* sim,
+                        std::shared_ptr<CTransferManager> transferMgr,
+                        std::shared_ptr<CBaseTransferNumGen> transferNumGen,
+                        const std::uint32_t tickFreq,
+                        const TickType startTick=0 );
 
     void OnUpdate(const TickType now) final;
 };
 
-class CTransferGeneratorExponential : public CScheduleable
+class CExponentialTransferGen : public CScheduleable
 {
 private:
     IBaseSim* mSim;
-    CTransferManager* mTransferMgr;
+    std::shared_ptr<CTransferManager> mTransferMgr;
     std::uint32_t mTickFreq;
 
 public:
-    bool mOverrideExpiration = false;
-
-    std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
+    std::shared_ptr<CBaseTransferNumGen> mTransferNumGen;
     std::vector<CStorageElement*> mSrcStorageElements;
     std::vector<CStorageElement*> mDstStorageElements;
 
 public:
-    CTransferGeneratorExponential(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const TickType startTick=0);
+    CExponentialTransferGen(IBaseSim* sim,
+                            std::shared_ptr<CTransferManager> transferMgr,
+                            std::shared_ptr<CBaseTransferNumGen> transferNumGen,
+                            const std::uint32_t tickFreq,
+                            const TickType startTick=0 );
 
     void OnUpdate(const TickType now) final;
 };
 
-class CTransferGeneratorSrcPrio : public CScheduleable
+class CSrcPrioTransferGen : public CScheduleable
 {
 private:
     IBaseSim* mSim;
-    CTransferManager* mTransferMgr;
+    std::shared_ptr<CTransferManager> mTransferMgr;
     std::uint32_t mTickFreq;
 
 public:
-    std::unique_ptr<CTransferNumberGenerator> mTransferNumberGen;
+    std::shared_ptr<CBaseTransferNumGen> mTransferNumGen;
     std::unordered_map<IdType, int> mSrcStorageElementIdToPrio;
     std::vector<CStorageElement*> mDstStorageElements;
 
 public:
-    CTransferGeneratorSrcPrio(IBaseSim* sim, CTransferManager* transferMgr, const std::uint32_t tickFreq, const TickType startTick=0);
+    CSrcPrioTransferGen(IBaseSim* sim,
+                        std::shared_ptr<CTransferManager> transferMgr,
+                        std::shared_ptr<CBaseTransferNumGen> transferNumGen,
+                        const std::uint32_t tickFreq,
+                        const TickType startTick=0 );
 
     void OnUpdate(const TickType now) final;
 };
+
+
 
 class CHeartbeat : public CScheduleable
 {

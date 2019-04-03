@@ -242,7 +242,7 @@ bool COutput::InsertRow(const std::string& tableName, const std::string& row)
     return sqlite3_exec(mDB, str.c_str(), nullptr, nullptr, nullptr) == SQLITE_OK;
 }
 
-void COutput::QueueInserts(std::shared_ptr<CInsertStatements>& statements)
+void COutput::QueueInserts(std::unique_ptr<CInsertStatements>&& statements)
 {
     assert(statements != nullptr);
 
@@ -256,7 +256,7 @@ void COutput::QueueInserts(std::shared_ptr<CInsertStatements>& statements)
         newProducerIdx = (mProducerIdx + 1) % OUTPUT_BUF_SIZE;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    mStatementsBuffer[mProducerIdx] = statements;
+    mStatementsBuffer[mProducerIdx] = std::move(statements);
     mProducerIdx = newProducerIdx;
 }
 

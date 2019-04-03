@@ -16,7 +16,7 @@ SFile::SFile(const std::uint32_t size, const TickType expiresAt)
 
 void SFile::Remove(const TickType now)
 {
-    for(auto& replica : mReplicas)
+    for(const std::shared_ptr<SReplica>& replica : mReplicas)
         replica->OnRemoveByFile(now);
     mReplicas.clear();
 }
@@ -40,7 +40,7 @@ auto SFile::RemoveExpiredReplicas(const TickType now) -> std::size_t
 
     for(;frontIdx < backIdx; ++frontIdx)
     {
-        std::shared_ptr<SReplica>& curReplica = mReplicas[frontIdx];
+        std::shared_ptr<SReplica> curReplica = mReplicas[frontIdx];
         if(curReplica->mExpiresAt <= now)
         {
             std::swap(curReplica, mReplicas[backIdx]);
@@ -78,7 +78,6 @@ auto SReplica::Increase(std::uint32_t amount, const TickType now) -> std::uint32
     {
         amount = maxSize - mCurSize;
         newSize = maxSize;
-        mState = COMPLETE;
     }
     mCurSize = static_cast<std::uint32_t>(newSize);
     mStorageElement->OnIncreaseReplica(amount, now);
@@ -88,7 +87,6 @@ auto SReplica::Increase(std::uint32_t amount, const TickType now) -> std::uint32
 void SReplica::OnRemoveByFile(const TickType now)
 {
     mStorageElement->OnRemoveReplica(this, now);
-    mState = DELETED;
 }
 
 
@@ -149,9 +147,9 @@ auto CStorageElement::CreateReplica(SFile* const file) -> std::shared_ptr<SRepli
     if (!result.second)
         return nullptr;
 
-    std::shared_ptr<SReplica> newReplica(new SReplica(file, this, mReplicas.size()));
+    auto newReplica = std::make_shared<SReplica>(file, this, mReplicas.size());
     file->mReplicas.emplace_back(newReplica);
-    mReplicas.push_back(newReplica);
+    mReplicas.emplace_back(newReplica);
 
     return newReplica;
 }
