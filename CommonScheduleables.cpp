@@ -87,7 +87,9 @@ auto CDataGenerator::CreateFilesAndReplicas(const std::uint32_t numFiles, const 
         for(std::uint32_t numCreated = 0; numCreated<numReplicasPerFile; ++numCreated)
         {
             auto selectedElementIt = mStorageElements.begin() + (rngSampler(mSim->mRNGEngine) % (numStorageElements - numCreated));
-            (*selectedElementIt)->CreateReplica(file)->Increase(fileSize, now);
+            auto r = (*selectedElementIt)->CreateReplica(file);
+            r->Increase(fileSize, now);
+            r->mExpiresAt = now + (lifetime / numReplicasPerFile);
             replicaInsertStmts->AddValue(file->GetId());
             replicaInsertStmts->AddValue((*selectedElementIt)->GetId());
             std::iter_swap(selectedElementIt, reverseRSEIt);
@@ -420,8 +422,8 @@ void CTransferGeneratorSrcPrio::OnUpdate(const TickType now)
     const std::uint32_t numToCreate = mTransferNumberGen->GetNumToCreate(rngEngine, numActive, now);
 
     std::shared_ptr<CInsertStatements> replicaInsertStmts(new CInsertStatements(CStorageElement::mOutputQueryIdx, numToCreate * 2));
-
-    for(std::uint32_t totalTransfersCreated=0; totalTransfersCreated<numToCreate; ++totalTransfersCreated)
+    std::uint32_t flexCreationLimit = numToCreate;
+    for(std::uint32_t totalTransfersCreated=0; totalTransfersCreated< flexCreationLimit; ++totalTransfersCreated)
     {
         CStorageElement* const dstStorageElement = mDstStorageElements[static_cast<std::size_t>(dstStorageElementRndSelecter(rngEngine) * 2) % numDstStorageElements];
         SFile* fileToTransfer = allFiles[fileRndSelector(rngEngine)].get();
@@ -431,13 +433,16 @@ void CTransferGeneratorSrcPrio::OnUpdate(const TickType now)
 
         const std::vector<std::shared_ptr<SReplica>>& replicas = fileToTransfer->mReplicas;
         if(replicas.empty())
+        {
+            flexCreationLimit += 1;
             continue;
+        }
 
         std::shared_ptr<SReplica> newReplica = dstStorageElement->CreateReplica(fileToTransfer);
         if(newReplica != nullptr)
         {
             newReplica->mExpiresAt = now + SECONDS_PER_DAY;
-            int minPrio = 1000000;
+            int minPrio = std::numeric_limits<int>::max();
             std::vector<std::shared_ptr<SReplica>> bestSrcReplicas;
             for(const std::shared_ptr<SReplica>& replica : replicas)
             {
@@ -459,12 +464,30 @@ void CTransferGeneratorSrcPrio::OnUpdate(const TickType now)
             }
 
             if(bestSrcReplicas.empty())
+            {
+                flexCreationLimit += 1;
                 continue;
+            }
 
+            std::shared_ptr<SReplica> bestSrcReplica = bestSrcReplicas[0];
+            if (minPrio > 0)
+            {
+                const ISite* const dstSite = dstStorageElement->GetSite();
+                double minWeight = std::numeric_limits<double>::max();
+                for (std::shared_ptr<SReplica>& replica : bestSrcReplicas)
+                {
+                    double w = replica->GetStorageElement()->GetSite()->GetLinkSelector(dstSite)->GetWeight();
+                    if (w < minWeight)
+                    {
+                        minWeight = w;
+                        bestSrcReplica = replica;
+                    }
+                }
+            }
             replicaInsertStmts->AddValue(fileToTransfer->GetId());
             replicaInsertStmts->AddValue(dstStorageElement->GetId());
 
-            mTransferMgr->CreateTransfer(bestSrcReplicas[0], newReplica, now);
+            mTransferMgr->CreateTransfer(bestSrcReplica, newReplica, now);
         }
         else
         {

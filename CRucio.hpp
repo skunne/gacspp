@@ -39,6 +39,9 @@ public:
     inline auto GetDstSiteId() const -> IdType
     {return mDstSiteId;}
 
+    inline auto GetWeight() const -> double
+    { return mNetworkPrice.back().second; }
+
     PriceInfoType mNetworkPrice = {{0,0}};
     std::uint64_t mUsedTraffic = 0;
     std::uint32_t mNumActiveTransfers = 0;
