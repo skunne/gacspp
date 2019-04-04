@@ -299,4 +299,9 @@ namespace gcp
 		//download us emea   22EB-AAE8-FBCD 0.0000000 0.1121580 0.1028115 0.0747720
 
 	}
+    bool CCloud::TryConsumeConfig(const nlohmann::json::const_iterator& json)
+    {
+
+        return false;
+    }
 }

@@ -4,6 +4,9 @@
 #include <random>
 
 
+#define JSON_DUMP_SPACES (2)
+#define JSON_FILE_IMPORT_KEY ("_file_")
+
 // comment out to use dynamic names
 #define STATIC_DB_NAME (":memory:")
 #define STATIC_DB_LOG_NAME ("sqlitedb.log")

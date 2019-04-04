@@ -40,7 +40,7 @@ auto SFile::RemoveExpiredReplicas(const TickType now) -> std::size_t
 
     for(;frontIdx < backIdx; ++frontIdx)
     {
-        std::shared_ptr<SReplica> curReplica = mReplicas[frontIdx];
+        std::shared_ptr<SReplica>& curReplica = mReplicas[frontIdx];
         if(curReplica->mExpiresAt <= now)
         {
             std::swap(curReplica, mReplicas[backIdx]);
@@ -244,4 +244,10 @@ auto CRucio::RunReaper(const TickType now) -> std::size_t
         mFiles.pop_back();
     }
     return numFiles - mFiles.size();
+}
+#include <iostream>
+bool CRucio::TryConsumeConfig(const nlohmann::json::const_iterator& json)
+{
+    std::cout<<json.key()<<":\n"<<json.value()<<std::endl;
+    return false;
 }

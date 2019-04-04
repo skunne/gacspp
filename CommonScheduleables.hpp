@@ -1,3 +1,5 @@
+#pragma once
+
 #include <chrono>
 #include <random>
 #include <unordered_map>

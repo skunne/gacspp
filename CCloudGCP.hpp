@@ -7,7 +7,7 @@
 #include "constants.h"
 #include "CRucio.hpp"
 
-class IBaseCloud
+class IBaseCloud : public IConfigConsumer
 {
 private:
 	std::string mName;
@@ -81,5 +81,7 @@ namespace gcp
 		auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion* final;
 		auto ProcessBilling(TickType now) -> std::pair<double, std::pair<double, double>> final;
 		void SetupDefaultCloud() final;
+
+        bool TryConsumeConfig(const nlohmann::json::const_iterator& json) final;
 	};
 }

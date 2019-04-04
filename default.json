@@ -1,0 +1,4 @@
+{
+"gcp": {"_file_": "gcp_default.json"},
+"rucio": {"_file_": "rucio_default.json"}
+}

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "constants.h"
+#include "CConfigLoader.hpp"
 
 class ISite;
 class CStorageElement;
@@ -204,7 +205,7 @@ public:
 	auto CreateStorageElement(std::string&& name) -> CStorageElement*;
 };
 
-class CRucio
+class CRucio : public IConfigConsumer
 {
 public:
     std::vector<std::unique_ptr<SFile>> mFiles;
@@ -214,4 +215,6 @@ public:
     auto CreateFile(const std::uint32_t size, const TickType expiresAt) -> SFile*;
     auto CreateGridSite(std::string&& name, std::string&& locationName) -> CGridSite*;
     auto RunReaper(const TickType now) -> std::size_t;
+
+    bool TryConsumeConfig(const nlohmann::json::const_iterator& json) final;
 };
