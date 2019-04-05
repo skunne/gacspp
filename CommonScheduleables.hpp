@@ -1,7 +1,6 @@
 #pragma once
 
 #include <chrono>
-#include <random>
 #include <unordered_map>
 
 #include "constants.h"
@@ -12,6 +11,7 @@ class CRucio;
 class CStorageElement;
 class CLinkSelector;
 struct SReplica;
+
 
 
 class CDataGenerator : public CScheduleable
@@ -79,12 +79,10 @@ private:
         CLinkSelector* mLinkSelector;
         TickType mStartTick;
 
-        STransfer(std::shared_ptr<SReplica> srcReplica, std::shared_ptr<SReplica> dstReplica, CLinkSelector* const linkSelector, TickType startTick)
-            : mSrcReplica(srcReplica),
-              mDstReplica(dstReplica),
-              mLinkSelector(linkSelector),
-              mStartTick(startTick)
-        {}
+        STransfer(  std::shared_ptr<SReplica> srcReplica,
+                    std::shared_ptr<SReplica> dstReplica,
+                    CLinkSelector* const linkSelector,
+                    TickType startTick);
     };
 
     std::vector<STransfer> mActiveTransfers;

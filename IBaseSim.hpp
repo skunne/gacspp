@@ -5,14 +5,20 @@
 #include <vector>
 
 #include "constants.h"
+
 #include "CScheduleable.hpp"
 
 class IBaseCloud;
 class CRucio;
 
+
+
 class IBaseSim
 {
 public:
+    IBaseSim();
+    virtual ~IBaseSim();
+
     //std::random_device rngDevice;
     RNGEngineType mRNGEngine {42};
 

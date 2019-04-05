@@ -1,118 +1,12 @@
-#include <algorithm>
-#include <cassert>
+//#include <algorithm>
+#include <iostream>
 
-#include "COutput.hpp"
+#include "json.hpp"
+
+#include "CLinkSelector.hpp"
 #include "CRucio.hpp"
-
-std::size_t CStorageElement::mOutputQueryIdx = 0;
-
-SFile::SFile(const std::uint32_t size, const TickType expiresAt)
-    : mId(GetNewId()),
-      mSize(size),
-      mExpiresAt(expiresAt)
-{
-    mReplicas.reserve(8);
-}
-
-void SFile::Remove(const TickType now)
-{
-    for(const std::shared_ptr<SReplica>& replica : mReplicas)
-        replica->OnRemoveByFile(now);
-    mReplicas.clear();
-}
-
-auto SFile::RemoveExpiredReplicas(const TickType now) -> std::size_t
-{
-    const std::size_t numReplicas = mReplicas.size();
-
-    if(numReplicas < 2)
-        return 0; // do not delete last replica if file didnt expire
-
-    std::size_t frontIdx = 0;
-    std::size_t backIdx = numReplicas - 1;
-
-    while(backIdx > frontIdx && mReplicas[backIdx]->mExpiresAt <= now)
-    {
-        mReplicas[backIdx]->OnRemoveByFile(now);
-        mReplicas.pop_back();
-        --backIdx;
-    }
-
-    for(;frontIdx < backIdx; ++frontIdx)
-    {
-        std::shared_ptr<SReplica>& curReplica = mReplicas[frontIdx];
-        if(curReplica->mExpiresAt <= now)
-        {
-            std::swap(curReplica, mReplicas[backIdx]);
-            do
-            {
-                mReplicas[backIdx]->OnRemoveByFile(now);
-                mReplicas.pop_back();
-                --backIdx;
-            } while(backIdx > frontIdx && mReplicas[backIdx]->mExpiresAt <= now);
-        }
-    }
-
-    if(backIdx == 0 && mReplicas.back()->mExpiresAt <= now)
-    {
-        mReplicas[backIdx]->OnRemoveByFile(now);
-        mReplicas.pop_back();
-    }
-    return numReplicas - mReplicas.size();
-}
-
-
-
-SReplica::SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement)
-    : mFile(file),
-      mStorageElement(storageElement),
-      mIndexAtStorageElement(indexAtStorageElement),
-      mExpiresAt(file->mExpiresAt)
-{}
-
-auto SReplica::Increase(std::uint32_t amount, const TickType now) -> std::uint32_t
-{
-    const std::uint32_t maxSize = mFile->GetSize();
-    std::uint64_t newSize = mCurSize + amount;
-    if (newSize >= maxSize)
-    {
-        amount = maxSize - mCurSize;
-        newSize = maxSize;
-    }
-    mCurSize = static_cast<std::uint32_t>(newSize);
-    mStorageElement->OnIncreaseReplica(amount, now);
-    return amount;
-}
-
-void SReplica::OnRemoveByFile(const TickType now)
-{
-    mStorageElement->OnRemoveReplica(this, now);
-}
-
-
-
-ISite::ISite(std::string&& name, std::string&& locationName)
-	: mId(GetNewId()),
-      mName(std::move(name)),
-	  mLocationName(std::move(locationName))
-{}
-
-auto ISite::CreateLinkSelector(const ISite* const dstSite, const std::uint32_t bandwidth) -> CLinkSelector*
-{
-    auto result = mDstSiteIdToLinkSelectorIdx.insert({dstSite->mId, mLinkSelectors.size()});
-    assert(result.second);
-    CLinkSelector* newLinkSelector = new CLinkSelector(bandwidth, mId, dstSite->mId);
-    mLinkSelectors.emplace_back(newLinkSelector);
-    return newLinkSelector;
-}
-
-auto ISite::GetLinkSelector(const ISite* const dstSite) -> CLinkSelector*
-{
-    auto result = mDstSiteIdToLinkSelectorIdx.find(dstSite->mId);
-    if(result == mDstSiteIdToLinkSelectorIdx.end())
-        return nullptr;
-    return mLinkSelectors[result->second].get();
-}
+#include "CStorageElement.hpp"
+#include "SFile.hpp"
 
 
 
@@ -131,65 +25,12 @@ auto CGridSite::CreateStorageElement(std::string&& name) -> CStorageElement*
 
 
 
-CStorageElement::CStorageElement(std::string&& name, ISite* const site)
-	: mId(GetNewId()),
-      mName(std::move(name)),
-	  mSite(site)
-{
-	mFileIds.reserve(50000);
-	mReplicas.reserve(50000);
-}
-
-auto CStorageElement::CreateReplica(SFile* const file) -> std::shared_ptr<SReplica>
-{
-    const auto result = mFileIds.insert(file->GetId());
-
-    if (!result.second)
-        return nullptr;
-
-    auto newReplica = std::make_shared<SReplica>(file, this, mReplicas.size());
-    file->mReplicas.emplace_back(newReplica);
-    mReplicas.emplace_back(newReplica);
-
-    return newReplica;
-}
-
-void CStorageElement::OnIncreaseReplica(const std::uint64_t amount, const TickType now)
-{
-    (void)now;
-    mUsedStorage += amount;
-}
-
-void CStorageElement::OnRemoveReplica(const SReplica* const replica, const TickType now)
-{
-    (void)now;
-    const auto FileIdIterator = mFileIds.find(replica->GetFile()->GetId());
-    const std::size_t idxToDelete = replica->mIndexAtStorageElement;
-    const std::uint32_t curSize = replica->GetCurSize();
-
-    assert(FileIdIterator != mFileIds.cend());
-    assert(idxToDelete < mReplicas.size());
-    assert(curSize <= mUsedStorage);
-
-    auto& lastReplica = mReplicas.back();
-    std::size_t& idxLastReplica = lastReplica->mIndexAtStorageElement;
-
-    mUsedStorage -= curSize;
-    mFileIds.erase(FileIdIterator);
-    if(idxToDelete != idxLastReplica)
-    {
-        idxLastReplica = idxToDelete;
-        mReplicas[idxToDelete] = lastReplica;
-    }
-    mReplicas.pop_back();
-}
-
-
-
 CRucio::CRucio()
 {
     mFiles.reserve(150000);
 }
+
+CRucio::~CRucio() = default;
 
 auto CRucio::CreateFile(const std::uint32_t size, const TickType expiresAt) -> SFile*
 {
@@ -245,9 +86,76 @@ auto CRucio::RunReaper(const TickType now) -> std::size_t
     }
     return numFiles - mFiles.size();
 }
-#include <iostream>
-bool CRucio::TryConsumeConfig(const nlohmann::json::const_iterator& json)
+
+bool CRucio::TryConsumeConfig(const json& json)
 {
-    std::cout<<json.key()<<":\n"<<json.value()<<std::endl;
-    return false;
+    json::const_iterator rootIt = json.find("rucio");
+    if( rootIt == json.cend() )
+        return false;
+
+    for( const auto& [key, value] : rootIt.value().items() )
+    {
+        if( key == "sites" )
+        {
+            for(const auto& siteJson : value)
+            {
+                std::string siteName, siteRegion;
+                nlohmann::json storageElementsJson;
+                for(const auto& [siteJsonKey, siteJsonValue] : siteJson.items())
+                {
+                    if(siteJsonKey == "name")
+                        siteName = siteJsonValue.get<std::string>();
+                    else if(siteJsonKey == "region")
+                        siteRegion = siteJsonValue.get<std::string>();
+                    else if(siteJsonKey == "storage_elements")
+                        storageElementsJson = siteJsonValue;
+                    else
+                        std::cout << "Ignoring unknown key while loading sites: " << siteJsonKey << std::endl;
+                }
+
+                if (siteName.empty())
+                {
+                    std::cout << "Couldn't find name attribute of site" << std::endl;
+                    continue;
+                }
+
+                if (siteRegion.empty())
+                {
+                    std::cout << "Couldn't find region attribute of site: " << siteName << std::endl;
+                    continue;
+                }
+
+                std::cout << "Adding site " << siteName << " in " << siteRegion << std::endl;
+                CGridSite *site = CreateGridSite(std::move(siteName), std::move(siteRegion));
+
+                if (storageElementsJson.empty())
+                {
+                    std::cout << "No storage elements to create for this site" << std::endl;
+                    continue;
+                }
+
+                for(const auto& storageElementJson : storageElementsJson)
+                {
+                    std::string storageElementName;
+                    for(const auto& [storageElementJsonKey, storageElementJsonValue] : storageElementJson.items())
+                    {
+                        if(storageElementJsonKey == "name")
+                            storageElementName = storageElementJsonValue.get<std::string>();
+                        else
+                            std::cout << "Ignoring unknown key while loading StorageElements: " << storageElementJsonKey << std::endl;
+                    }
+
+                    if (storageElementName.empty())
+                    {
+                        std::cout << "Couldn't find name attribute of StorageElement" << std::endl;
+                        continue;
+                    }
+
+                    std::cout << "Adding StorageElement " << storageElementName << std::endl;
+                    site->CreateStorageElement(std::move(storageElementName));
+                }
+            }
+        }
+    }
+    return true;
 }

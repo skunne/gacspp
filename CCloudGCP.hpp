@@ -1,31 +1,9 @@
 #pragma once
 
-#include <memory>
-#include <string>
-#include <vector>
+#include "IBaseCloud.hpp"
+#include "ISite.hpp"
 
-#include "constants.h"
-#include "CRucio.hpp"
-
-class IBaseCloud : public IConfigConsumer
-{
-private:
-	std::string mName;
-
-public:
-	std::vector<std::unique_ptr<ISite>> mRegions;
-
-	IBaseCloud(std::string&& name)
-		: mName(std::move(name))
-	{}
-
-	virtual auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> ISite* = 0;
-	virtual auto ProcessBilling(TickType now) -> std::pair<double, std::pair<double, double>> = 0;
-	virtual void SetupDefaultCloud() = 0;
-
-	inline auto GetName() const -> const std::string&
-	{return mName;}
-};
+#include "CStorageElement.hpp"
 
 namespace gcp
 {
@@ -58,6 +36,7 @@ namespace gcp
 		std::vector<std::unique_ptr<CBucket>> mStorageElements;
 
 		CRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId);
+        //~CRegion();
 
 		auto CreateStorageElement(std::string&& name) -> CBucket* final;
 		double CalculateStorageCosts(TickType now);
@@ -72,16 +51,12 @@ namespace gcp
 	class CCloud final : public IBaseCloud
 	{
 	public:
-		//std::vector<std::unique_ptr<CRegion>> mRegions;
-
-		CCloud(std::string&& name)
-			: IBaseCloud(std::move(name))
-		{}
+		using IBaseCloud::IBaseCloud;
 
 		auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion* final;
 		auto ProcessBilling(TickType now) -> std::pair<double, std::pair<double, double>> final;
 		void SetupDefaultCloud() final;
 
-        bool TryConsumeConfig(const nlohmann::json::const_iterator& json) final;
+        bool TryConsumeConfig(const nlohmann::json& json) final;
 	};
 }

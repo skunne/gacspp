@@ -5,12 +5,15 @@
 #include <limits>
 #include <sstream>
 
-#include "constants.h"
-#include "COutput.hpp"
+#include "IBaseCloud.hpp"
 #include "IBaseSim.hpp"
+
+#include "CLinkSelector.hpp"
 #include "CRucio.hpp"
-#include "CCloudGCP.hpp"
+#include "COutput.hpp"
+#include "CStorageElement.hpp"
 #include "CommonScheduleables.hpp"
+#include "SFile.hpp"
 
 
 CDataGenerator::CDataGenerator(IBaseSim* sim, const std::uint32_t tickFreq, const TickType startTick)
@@ -164,6 +167,16 @@ void CBillingGenerator::OnUpdate(const TickType now)
 }
 
 
+
+CTransferManager::STransfer::STransfer( std::shared_ptr<SReplica> srcReplica,
+                                        std::shared_ptr<SReplica> dstReplica,
+                                        CLinkSelector* const linkSelector,
+                                        TickType startTick)
+    : mSrcReplica(srcReplica),
+      mDstReplica(dstReplica),
+      mLinkSelector(linkSelector),
+      mStartTick(startTick)
+{}
 
 CTransferManager::CTransferManager(const std::uint32_t tickFreq, const TickType startTick)
     : CScheduleable(startTick),

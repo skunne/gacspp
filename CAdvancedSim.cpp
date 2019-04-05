@@ -1,26 +1,29 @@
 #include <cassert>
 #include <sstream>
 
-#include "COutput.hpp"
-#include "CRucio.hpp"
-#include "CCloudGCP.hpp"
-#include "CommonScheduleables.hpp"
-#include "CAdvancedSim.hpp"
-
 #include "sqlite3.h"
+
+#include "CAdvancedSim.hpp"
+#include "CCloudGCP.hpp"
+#include "CConfigLoader.hpp"
+#include "CRucio.hpp"
+#include "COutput.hpp"
+#include "CommonScheduleables.hpp"
+
 
 
 bool InsertSite(ISite* site);
 bool InsertStorageElement(CStorageElement* storageElement);
 bool InsertLinkSelector(CLinkSelector* linkselector);
 
+
 void CAdvancedSim::SetupDefaults()
 {
+    COutput& output = COutput::GetRef();
+    CConfigLoader& config = CConfigLoader::GetRef();
     ////////////////////////////
     // init output db
     ////////////////////////////
-    COutput& output = COutput::GetRef();
-
     std::stringstream columns;
     bool ok = false;
 
@@ -51,23 +54,20 @@ void CAdvancedSim::SetupDefaults()
     ok = output.CreateTable("Transfers", columns.str());
     assert(ok);
 
-    CStorageElement::mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Replicas VALUES(?, ?);");
+    CStorageElement::mOutputQueryIdx = output.AddPreparedSQLStatement("INSERT INTO Replicas VALUES(?, ?);");
 
 
     ////////////////////////////
     // setup grid and clouds
     ////////////////////////////
     mRucio = std::make_unique<CRucio>();
+    mClouds.emplace_back(std::make_unique<gcp::CCloud>("GCP"));
 
-    CGridSite* asgc = mRucio->CreateGridSite("ASGC", "asia");
-    CGridSite* cern = mRucio->CreateGridSite("CERN", "europe");
-    CGridSite* bnl = mRucio->CreateGridSite("BNL", "us");
+    config.mConfigConsumer.push_back(mRucio.get());
+    for(std::unique_ptr<IBaseCloud>& cloud : mClouds)
+        config.mConfigConsumer.push_back(cloud.get());
 
-    std::vector<CStorageElement*> gridStoragleElements {
-                asgc->CreateStorageElement("TAIWAN_DATADISK"),
-                cern->CreateStorageElement("CERN_DATADISK"),
-                bnl->CreateStorageElement("BNL_DATADISK")
-            };
+    config.TryLoadConfig(std::filesystem::current_path() / "config" / "default.json");
 
     for(const std::unique_ptr<IBaseCloud>& cloud : mClouds)
     {
@@ -89,7 +89,9 @@ void CAdvancedSim::SetupDefaults()
     // setup scheuleables
     ////////////////////////////
     auto dataGen = std::make_shared<CDataGenerator>(this, 50, 0);
-    dataGen->mStorageElements = gridStoragleElements;
+    for(const std::unique_ptr<CGridSite>& gridSite : mRucio->mGridSites)
+        for(const std::unique_ptr<CStorageElement>& gridStoragleElement : gridSite->mStorageElements)
+            dataGen->mStorageElements.push_back(gridStoragleElement.get());
 
     auto reaper = std::make_shared<CReaper>(mRucio.get(), 600, 600);
 

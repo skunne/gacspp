@@ -3,6 +3,7 @@
 
 #include "constants.h"
 #include "CConfigLoader.hpp"
+#include "json.hpp"
 
 
 auto CConfigLoader::GetRef() -> CConfigLoader&
@@ -11,16 +12,16 @@ auto CConfigLoader::GetRef() -> CConfigLoader&
     return mInstance;
 }
 
-bool CConfigLoader::TryLoadConfig(const nlohmann::json& jsonRoot)
+bool CConfigLoader::TryLoadConfig(const json& jsonRoot)
 {
     if(mConfigConsumer.empty())
         std::cout << "No config consumers registered" << std::endl;
 
-    for(nlohmann::json::const_iterator jsonRootIt=jsonRoot.cbegin(); jsonRootIt!=jsonRoot.cend(); ++jsonRootIt)
+    for(json::const_iterator jsonRootIt=jsonRoot.cbegin(); jsonRootIt!=jsonRoot.cend(); ++jsonRootIt)
     {
         bool wasConsumed = false;
         auto resultIt = jsonRootIt.value().find(JSON_FILE_IMPORT_KEY);
-        if(jsonRootIt.value().is_object() && resultIt != jsonRootIt.value().end())
+        if(jsonRootIt.value().is_object() && (resultIt != jsonRootIt.value().end()))
         {
             if(!resultIt.value().is_string())
             {
@@ -28,13 +29,15 @@ bool CConfigLoader::TryLoadConfig(const nlohmann::json& jsonRoot)
                 std::cout << resultIt->dump(JSON_DUMP_SPACES) << std::endl;
                 continue;
             }
-
-            wasConsumed = TryLoadConfig(resultIt.value().get<std::string>());
+            fs::path curPathBefore = mCurrentDirectory;
+            wasConsumed = TryLoadConfig(mCurrentDirectory / resultIt.value().get<std::string>());
+            mCurrentDirectory = curPathBefore;
         }
         else
         {
+            const json consumableJson = { {jsonRootIt.key(), jsonRootIt.value()} };
             for(IConfigConsumer* consumer : mConfigConsumer)
-                wasConsumed = wasConsumed || consumer->TryConsumeConfig(jsonRootIt);
+                wasConsumed = wasConsumed || consumer->TryConsumeConfig(consumableJson);
         }
 
         if(!wasConsumed)
@@ -47,16 +50,16 @@ bool CConfigLoader::TryLoadConfig(const nlohmann::json& jsonRoot)
     return true;
 }
 
-bool CConfigLoader::TryLoadConfig(const std::string& path)
+bool CConfigLoader::TryLoadConfig(const fs::path& path)
 {
-    std::pair<std::unordered_set<std::string>::iterator, bool> insertResult = mLoadedFiles.insert(path);
+    auto insertResult = mLoadedFiles.insert(path.string());
     if(!insertResult.second)
     {
         std::cout << "Preventing file from being loaded twice: " << path << std::endl;
         return false;
     }
 
-    nlohmann::json jsonRoot;
+    json jsonRoot;
 
     {
         std::ifstream configFile(path);
@@ -67,6 +70,9 @@ bool CConfigLoader::TryLoadConfig(const std::string& path)
         }
         configFile >> jsonRoot;
     }
+
+    mCurrentDirectory = path;
+    mCurrentDirectory.remove_filename();
 
     return TryLoadConfig(jsonRoot);
 }

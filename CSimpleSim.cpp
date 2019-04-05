@@ -1,13 +1,16 @@
 #include <cassert>
 #include <sstream>
 
-#include "COutput.hpp"
-#include "CRucio.hpp"
-#include "CCloudGCP.hpp"
-#include "CommonScheduleables.hpp"
-#include "CSimpleSim.hpp"
-
 #include "sqlite3.h"
+
+#include "CCloudGCP.hpp"
+#include "CConfigLoader.hpp"
+#include "CLinkSelector.hpp"
+#include "CRucio.hpp"
+#include "CSimpleSim.hpp"
+#include "COutput.hpp"
+#include "CommonScheduleables.hpp"
+
 
 
 bool InsertSite(ISite* site)
@@ -37,11 +40,11 @@ bool InsertLinkSelector(CLinkSelector* linkselector)
 
 void CSimpleSim::SetupDefaults()
 {
+    COutput& output = COutput::GetRef();
+    CConfigLoader& config = CConfigLoader::GetRef();
     ////////////////////////////
     // init output db
     ////////////////////////////
-    COutput& output = COutput::GetRef();
-
     std::stringstream columns;
     bool ok = false;
 
@@ -71,25 +74,21 @@ void CSimpleSim::SetupDefaults()
             << "FOREIGN KEY(dstStorageElementId) REFERENCES StorageElements(id)";
     ok = output.CreateTable("Transfers", columns.str());
     assert(ok);
-    //INSERT INTO Transfers VALUES(?, ?, ?, ?, ?, ?);
 
-    CStorageElement::mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Replicas VALUES(?, ?);");
+    CStorageElement::mOutputQueryIdx = output.AddPreparedSQLStatement("INSERT INTO Replicas VALUES(?, ?);");
 
 
     ////////////////////////////
     // setup grid and clouds
     ////////////////////////////
     mRucio = std::make_unique<CRucio>();
+    mClouds.emplace_back(std::make_unique<gcp::CCloud>("GCP"));
 
-    CGridSite* asgc = mRucio->CreateGridSite("ASGC", "asia");
-    CGridSite* cern = mRucio->CreateGridSite("CERN", "europe");
-    CGridSite* bnl = mRucio->CreateGridSite("BNL", "us");
+    config.mConfigConsumer.push_back(mRucio.get());
+    for(std::unique_ptr<IBaseCloud>& cloud : mClouds)
+        config.mConfigConsumer.push_back(cloud.get());
 
-    std::vector<CStorageElement*> gridStoragleElements {
-                asgc->CreateStorageElement("TAIWAN_DATADISK"),
-                cern->CreateStorageElement("CERN_DATADISK"),
-                bnl->CreateStorageElement("BNL_DATADISK")
-            };
+    config.TryLoadConfig(std::filesystem::current_path() / "config" / "default.json");
 
     for(const std::unique_ptr<IBaseCloud>& cloud : mClouds)
     {
@@ -111,14 +110,21 @@ void CSimpleSim::SetupDefaults()
     // setup scheuleables
     ////////////////////////////
     auto dataGen = std::make_shared<CDataGenerator>(this, 50, 0);
-    dataGen->mStorageElements = gridStoragleElements;
 
     auto reaper = std::make_shared<CReaper>(mRucio.get(), 600, 600);
 
     auto g2cTransferMgr = std::make_shared<CTransferManager>(20, 100);
     auto g2cTransferNumGen = std::make_shared<CWavedTransferNumGen>(15, 500, 25, 0.075);
     auto g2cTransferGen = std::make_shared<CExponentialTransferGen>(this, g2cTransferMgr, g2cTransferNumGen, 25);
-    g2cTransferGen->mSrcStorageElements = gridStoragleElements;
+
+    for(const std::unique_ptr<CGridSite>& gridSite : mRucio->mGridSites)
+    {
+        for(const std::unique_ptr<CStorageElement>& gridStoragleElement : gridSite->mStorageElements)
+        {
+            dataGen->mStorageElements.push_back(gridStoragleElement.get());
+            g2cTransferGen->mSrcStorageElements.push_back(gridStoragleElement.get());
+        }
+    }
 
     auto c2cTransferMgr = std::make_shared<CTransferManager>(20, 100);
     auto c2cTransferNumGen = std::make_shared<CWavedTransferNumGen>(10, 40, 25, 0.075);

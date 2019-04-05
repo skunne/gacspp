@@ -1,8 +1,12 @@
 #include <cassert>
 #include <iomanip>
-#include <unordered_map>
+#include <iostream>
+
+#include "json.hpp"
 
 #include "CCloudGCP.hpp"
+#include "CLinkSelector.hpp"
+#include "SFile.hpp"
 
 namespace gcp
 {
@@ -12,11 +16,13 @@ namespace gcp
 	{
 		mBucketEvents.reserve(32768);
 	}
+
 	void CBucket::OnIncreaseReplica(std::uint64_t amount, TickType now)
 	{
 		mBucketEvents.emplace_back(now, amount);
 		CStorageElement::OnIncreaseReplica(amount, now);
 	}
+
 	void CBucket::OnRemoveReplica(const SReplica* replica, TickType now)
 	{
 		mBucketEvents.emplace_back(now, -(static_cast<std::int64_t>(replica->GetCurSize())));
@@ -64,18 +70,23 @@ namespace gcp
 		const double lowerLevelCosts = CalculateNetworkCostsRecursive(traffic - threshold, nextLevelIt, endIt, curLevelIt->first);
 		return (BYTES_TO_GiB(threshold) * curLevelIt->second) + lowerLevelCosts;
 	}
+
 	CRegion::CRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId)
 		: ISite(std::move(name), std::move(locationName)),
 		mSKUId(std::move(skuId)),
 		mMultiLocationIdx(multiLocationIdx),
 		mStoragePriceCHF(storagePriceCHF)
 	{}
+
+    //CRegion::~CRegion() = default;
+
 	auto CRegion::CreateStorageElement(std::string&& name) -> CBucket*
 	{
 		CBucket* newBucket = new CBucket(std::move(name), this);
 		mStorageElements.emplace_back(newBucket);
 		return newBucket;
 	}
+
 	double CRegion::CalculateStorageCosts(TickType now)
 	{
 		double regionStorageCosts = 0;
@@ -83,6 +94,7 @@ namespace gcp
 			regionStorageCosts += bucket->CalculateStorageCosts(now);
 		return regionStorageCosts;
 	}
+
 	double CRegion::CalculateNetworkCosts(double& sumUsedTraffic, std::uint64_t& sumDoneTransfers)
 	{
 		double regionNetworkCosts = 0;
@@ -99,14 +111,15 @@ namespace gcp
 		}
 		return regionNetworkCosts;
 	}
+
+
+
 	auto CCloud::CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion*
 	{
 		CRegion* newRegion = new CRegion(multiLocationIdx, std::move(name), std::move(locationName), storagePriceCHF, std::move(skuId));
 		mRegions.emplace_back(newRegion);
 		return newRegion;
 	}
-
-
 
 	auto CCloud::ProcessBilling(TickType now) -> std::pair<double, std::pair<double, double>>
 	{
@@ -125,6 +138,7 @@ namespace gcp
 		}
         return { totalStorageCosts, {totalNetworkCosts, sumUsedTraffic } };
 	}
+
 	void CCloud::SetupDefaultCloud()
 	{
 		assert(mRegions.empty());
@@ -299,9 +313,13 @@ namespace gcp
 		//download us emea   22EB-AAE8-FBCD 0.0000000 0.1121580 0.1028115 0.0747720
 
 	}
-    bool CCloud::TryConsumeConfig(const nlohmann::json::const_iterator& json)
-    {
 
-        return false;
+    bool CCloud::TryConsumeConfig(const nlohmann::json& json)
+    {
+        nlohmann::json::const_iterator rootIt = json.find("gcp");
+        if(rootIt == json.cend())
+            return false;
+
+        return true;
     }
 }

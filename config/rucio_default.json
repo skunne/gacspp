@@ -1,0 +1,38 @@
+{
+"rucio":
+{
+    "sites":
+    [
+        {
+            "name": "ASGC",
+            "region": "asia",
+            "storage_elements":
+            [
+                {
+                    "name": "TAIWAN_DATADISK"
+                }
+            ]
+        },
+        {
+            "name": "CERN",
+            "region": "europe",
+            "storage_elements":
+            [
+                {
+                    "name": "CERN_DATADISK"
+                }
+            ]
+        },
+        {
+            "name": "BNL",
+            "region": "us",
+            "storage_elements":
+            [
+                {
+                    "name": "BNL_DATADISK"
+                }
+            ]
+        }
+    ]
+}
+}

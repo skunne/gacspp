@@ -1,19 +1,13 @@
 #include <iomanip>
 #include <iostream>
-#include <memory>
 #include <sstream>
 
-#include "constants.h"
-#include "CCloudGCP.hpp"
-#include "CConfigLoader.hpp"
+#include "CAdvancedSim.hpp"
 #include "COutput.hpp"
 #include "CSimpleSim.hpp"
-#include "CAdvancedSim.hpp"
-
 
 int main(int argc, char** argv)
 {
-    CConfigLoader& config = CConfigLoader::GetRef();
     COutput& output = COutput::GetRef();
 
     {
@@ -37,13 +31,7 @@ int main(int argc, char** argv)
 
     //auto sim = std::make_unique<CSimpleSim>();
     auto sim = std::make_unique<CAdvancedSim>();
-    sim->mClouds.emplace_back(std::make_unique<gcp::CCloud>("GCP"));
     sim->SetupDefaults();
-
-    config.mConfigConsumer.push_back(sim->mRucio.get());
-    for(std::unique_ptr<IBaseCloud>& cloud : sim->mClouds)
-        config.mConfigConsumer.push_back(cloud.get());
-    config.TryLoadConfig(std::string("default.json"));
 
     output.StartConsumer();
     sim->Run(maxTick);

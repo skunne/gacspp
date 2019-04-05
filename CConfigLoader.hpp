@@ -1,18 +1,13 @@
 #pragma once
 
+#include <filesystem>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
-#include "json.hpp"
+#include "IConfigConsumer.hpp"
 
-
-
-class IConfigConsumer
-{
-public:
-    virtual bool TryConsumeConfig(const nlohmann::json::const_iterator& json) = 0;
-};
+namespace fs = std::filesystem;
 
 
 
@@ -20,6 +15,8 @@ class CConfigLoader
 {
 private:
     CConfigLoader() = default;
+
+    fs::path mCurrentDirectory;
 
 public:
     std::unordered_set<std::string> mLoadedFiles;
@@ -33,6 +30,6 @@ public:
 
     static auto GetRef() -> CConfigLoader&;
 
-    bool TryLoadConfig(const std::string& path);
-    bool TryLoadConfig(const nlohmann::json& jsonRoot);
+    bool TryLoadConfig(const fs::path& path);
+    bool TryLoadConfig(const json& jsonRoot);
 };
