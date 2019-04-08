@@ -29,23 +29,19 @@ namespace gcp
 	{
 	private:
 		std::string mSKUId;
-		std::uint32_t mMultiLocationIdx;
-		double mStoragePriceCHF;
+		double mStoragePrice;
 
 	public:
 		std::vector<std::unique_ptr<CBucket>> mStorageElements;
 
-		CRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId);
-        //~CRegion();
+		CRegion(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName, const double storagePrice, std::string&& skuId);
 
 		auto CreateStorageElement(std::string&& name) -> CBucket* final;
 		double CalculateStorageCosts(TickType now);
 		double CalculateNetworkCosts(double& sumUsedTraffic, std::uint64_t& sumDoneTransfers);
 
-		inline auto GetMultiLocationIdx() const -> std::uint32_t
-		{return mMultiLocationIdx;}
 		inline auto GetStoragePrice() const -> double
-		{return mStoragePriceCHF;}
+		{return mStoragePrice;}
 	};
 
 	class CCloud final : public IBaseCloud
@@ -53,7 +49,12 @@ namespace gcp
 	public:
 		using IBaseCloud::IBaseCloud;
 
-		auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion* final;
+		auto CreateRegion(const std::uint32_t multiLocationIdx,
+                          std::string&& name,
+                          const std::string& locationName,
+                          const double storagePrice,
+                          std::string&& skuId) -> CRegion* final;
+
 		auto ProcessBilling(TickType now) -> std::pair<double, std::pair<double, double>> final;
 		void SetupDefaultCloud() final;
 

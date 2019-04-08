@@ -158,7 +158,7 @@ void COutput::LogCallback(void* dat, int errorCode, const char* errorMessage)
     (void)dat;
     auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     std::stringstream timeStr;
-    timeStr << std::put_time(std::localtime(&now), "%H-%M-%S");
+    timeStr << std::put_time(std::localtime(&now), "%y%j_%H%M%S");
 #ifdef STATIC_DB_LOG_NAME
     static std::ofstream sqliteLog(STATIC_DB_LOG_NAME);
 #else

@@ -2,6 +2,7 @@
 
 #include "ISite.hpp"
 
+#include "COutput.hpp"
 #include "CStorageElement.hpp"
 #include "SFile.hpp"
 
@@ -17,6 +18,10 @@ CStorageElement::CStorageElement(std::string&& name, ISite* const site)
 {
 	mFileIds.reserve(50000);
 	mReplicas.reserve(50000);
+
+    std::string row = std::to_string(mId) + "," + std::to_string(mSite->GetId()) + ",'" + mName + "'";
+    bool ok = COutput::GetRef().InsertRow("StorageElements", row);
+    assert(ok);
 }
 
 auto CStorageElement::CreateReplica(SFile* const file) -> std::shared_ptr<SReplica>

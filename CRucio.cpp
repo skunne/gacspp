@@ -10,8 +10,8 @@
 
 
 
-CGridSite::CGridSite(std::string&& name, std::string&& locationName)
-	: ISite(std::move(name), std::move(locationName))
+CGridSite::CGridSite(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName)
+	: ISite(multiLocationIdx, std::move(name), locationName)
 {
 	mStorageElements.reserve(8);
 }
@@ -38,9 +38,9 @@ auto CRucio::CreateFile(const std::uint32_t size, const TickType expiresAt) -> S
     mFiles.emplace_back(newFile);
     return newFile;
 }
-auto CRucio::CreateGridSite(std::string&& name, std::string&& locationName) -> CGridSite*
+auto CRucio::CreateGridSite(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName) -> CGridSite*
 {
-    CGridSite* newSite = new CGridSite(std::move(name), std::move(locationName));
+    CGridSite* newSite = new CGridSite(multiLocationIdx, std::move(name), locationName);
     mGridSites.emplace_back(newSite);
     return newSite;
 }
@@ -99,18 +99,27 @@ bool CRucio::TryConsumeConfig(const json& json)
         {
             for(const auto& siteJson : value)
             {
-                std::string siteName, siteRegion;
+                std::unique_ptr<std::uint32_t> multiLocationIdx;
+                std::string siteName, siteLocation;
                 nlohmann::json storageElementsJson;
                 for(const auto& [siteJsonKey, siteJsonValue] : siteJson.items())
                 {
-                    if(siteJsonKey == "name")
+                    if(siteJsonKey == "multiLocationIdx")
+                        multiLocationIdx = std::make_unique<std::uint32_t>(siteJsonValue.get<std::uint32_t>());
+                    else if(siteJsonKey == "name")
                         siteName = siteJsonValue.get<std::string>();
-                    else if(siteJsonKey == "region")
-                        siteRegion = siteJsonValue.get<std::string>();
-                    else if(siteJsonKey == "storage_elements")
+                    else if(siteJsonKey == "location")
+                        siteLocation = siteJsonValue.get<std::string>();
+                    else if(siteJsonKey == "storageElements")
                         storageElementsJson = siteJsonValue;
                     else
-                        std::cout << "Ignoring unknown key while loading sites: " << siteJsonKey << std::endl;
+                        std::cout << "Ignoring unknown attribute while loading sites: " << siteJsonKey << std::endl;
+                }
+
+                if(multiLocationIdx == nullptr)
+                {
+                    std::cout << "Couldn't find multiLocationIdx attribute of site" << std::endl;
+                    continue;
                 }
 
                 if (siteName.empty())
@@ -119,14 +128,14 @@ bool CRucio::TryConsumeConfig(const json& json)
                     continue;
                 }
 
-                if (siteRegion.empty())
+                if (siteLocation.empty())
                 {
-                    std::cout << "Couldn't find region attribute of site: " << siteName << std::endl;
+                    std::cout << "Couldn't find location attribute of site: " << siteName << std::endl;
                     continue;
                 }
 
-                std::cout << "Adding site " << siteName << " in " << siteRegion << std::endl;
-                CGridSite *site = CreateGridSite(std::move(siteName), std::move(siteRegion));
+                std::cout << "Adding site " << siteName << " in " << siteLocation << std::endl;
+                CGridSite *site = CreateGridSite(*multiLocationIdx, std::move(siteName), siteLocation);
 
                 if (storageElementsJson.empty())
                 {
@@ -142,7 +151,7 @@ bool CRucio::TryConsumeConfig(const json& json)
                         if(storageElementJsonKey == "name")
                             storageElementName = storageElementJsonValue.get<std::string>();
                         else
-                            std::cout << "Ignoring unknown key while loading StorageElements: " << storageElementJsonKey << std::endl;
+                            std::cout << "Ignoring unknown attribute while loading StorageElements: " << storageElementJsonKey << std::endl;
                     }
 
                     if (storageElementName.empty())

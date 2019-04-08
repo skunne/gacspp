@@ -24,7 +24,12 @@ public:
 	IBaseCloud(std::string&& name);
     virtual ~IBaseCloud();
 
-	virtual auto CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> ISite* = 0;
+	virtual auto CreateRegion(const std::uint32_t multiLocationIdx,
+                              std::string&& name,
+                              const std::string& locationName,
+                              double storagePriceCHF,
+                              std::string&& skuId) -> ISite* = 0;
+                              
 	virtual auto ProcessBilling(TickType now) -> std::pair<double, std::pair<double, double>> = 0;
 	virtual void SetupDefaultCloud() = 0;
 

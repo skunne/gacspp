@@ -4,9 +4,10 @@
     "sites":
     [
         {
+            "multiLocationIdx": 0,
             "name": "ASGC",
-            "region": "asia",
-            "storage_elements":
+            "location": "asia",
+            "storageElements":
             [
                 {
                     "name": "TAIWAN_DATADISK"
@@ -14,9 +15,10 @@
             ]
         },
         {
+            "multiLocationIdx": 2,
             "name": "CERN",
-            "region": "europe",
-            "storage_elements":
+            "location": "europe",
+            "storageElements":
             [
                 {
                     "name": "CERN_DATADISK"
@@ -24,9 +26,10 @@
             ]
         },
         {
+            "multiLocationIdx": 4,
             "name": "BNL",
-            "region": "us",
-            "storage_elements":
+            "location": "us",
+            "storageElements":
             [
                 {
                     "name": "BNL_DATADISK"

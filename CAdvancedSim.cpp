@@ -12,11 +12,6 @@
 
 
 
-bool InsertSite(ISite* site);
-bool InsertStorageElement(CStorageElement* storageElement);
-bool InsertLinkSelector(CLinkSelector* linkselector);
-
-
 void CAdvancedSim::SetupDefaults()
 {
     COutput& output = COutput::GetRef();
@@ -81,7 +76,6 @@ void CAdvancedSim::SetupDefaults()
                 region->CreateLinkSelector(gridSite.get(), ONE_GiB / 128);
             }
         }
-        mSchedule.push(std::make_shared<CBillingGenerator>(this));
     }
 
 
@@ -99,7 +93,7 @@ void CAdvancedSim::SetupDefaults()
     auto x2cTransferNumGen = std::make_shared<CWavedTransferNumGen>(12, 200, 25, 0.075);
     auto x2cTransferGen = std::make_shared<CSrcPrioTransferGen>(this, x2cTransferMgr, x2cTransferNumGen, 25);
 
-    auto heartbeat = std::make_shared<CHeartbeat>(this, x2cTransferMgr, x2cTransferMgr, SECONDS_PER_DAY, SECONDS_PER_DAY);
+    auto heartbeat = std::make_shared<CHeartbeat>(this, x2cTransferMgr, x2cTransferMgr, static_cast<std::uint32_t>(SECONDS_PER_DAY), static_cast<TickType>(SECONDS_PER_DAY));
     heartbeat->mProccessDurations["DataGen"] = &(dataGen->mUpdateDurationSummed);
     heartbeat->mProccessDurations["X2CTransferUpdate"] = &(x2cTransferMgr->mUpdateDurationSummed);
     heartbeat->mProccessDurations["X2CTransferGen"] = &(x2cTransferGen->mUpdateDurationSummed);
@@ -108,18 +102,9 @@ void CAdvancedSim::SetupDefaults()
 
     for(const std::unique_ptr<CGridSite>& gridSite : mRucio->mGridSites)
     {
-        ok = InsertSite(gridSite.get());
-        assert(ok);
         for(const std::unique_ptr<CStorageElement>& storageElement : gridSite->mStorageElements)
         {
-            ok = InsertStorageElement(storageElement.get());
-            assert(ok);
             x2cTransferGen->mSrcStorageElementIdToPrio[storageElement->GetId()] = 0;
-        }
-        for(const std::unique_ptr<CLinkSelector>& linkselector : gridSite->mLinkSelectors)
-        {
-            ok = InsertLinkSelector(linkselector.get());
-            assert(ok);
         }
     }
 
@@ -127,22 +112,14 @@ void CAdvancedSim::SetupDefaults()
     {
         auto region = dynamic_cast<gcp::CRegion*>(cloudSite.get());
         assert(region);
-        ok = InsertSite(region);
-        assert(ok);
         for (const std::unique_ptr<gcp::CBucket>& bucket : region->mStorageElements)
         {
-            ok = InsertStorageElement(bucket.get());
-            assert(ok);
             x2cTransferGen->mSrcStorageElementIdToPrio[bucket->GetId()] = 1;
             x2cTransferGen->mDstStorageElements.push_back(bucket.get());
         }
-        for(const std::unique_ptr<CLinkSelector>& linkselector : region->mLinkSelectors)
-        {
-            ok = InsertLinkSelector(linkselector.get());
-            assert(ok);
-        }
     }
 
+    mSchedule.push(std::make_shared<CBillingGenerator>(this));
     mSchedule.push(dataGen);
     mSchedule.push(reaper);
     mSchedule.push(x2cTransferMgr);

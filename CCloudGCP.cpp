@@ -8,9 +8,10 @@
 #include "CLinkSelector.hpp"
 #include "SFile.hpp"
 
+
+
 namespace gcp
 {
-
 	CBucket::CBucket(std::string&& name, CRegion* region)
 		: CStorageElement(std::move(name), region)
 	{
@@ -71,14 +72,11 @@ namespace gcp
 		return (BYTES_TO_GiB(threshold) * curLevelIt->second) + lowerLevelCosts;
 	}
 
-	CRegion::CRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId)
-		: ISite(std::move(name), std::move(locationName)),
+	CRegion::CRegion(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName, const double storagePrice, std::string&& skuId)
+		: ISite(multiLocationIdx, std::move(name), locationName),
 		mSKUId(std::move(skuId)),
-		mMultiLocationIdx(multiLocationIdx),
-		mStoragePriceCHF(storagePriceCHF)
+		mStoragePrice(storagePrice)
 	{}
-
-    //CRegion::~CRegion() = default;
 
 	auto CRegion::CreateStorageElement(std::string&& name) -> CBucket*
 	{
@@ -114,9 +112,13 @@ namespace gcp
 
 
 
-	auto CCloud::CreateRegion(std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, double storagePriceCHF, std::string&& skuId) -> CRegion*
+	auto CCloud::CreateRegion(const std::uint32_t multiLocationIdx,
+                              std::string&& name,
+                              const std::string& locationName,
+                              const double storagePrice,
+                              std::string&& skuId) -> CRegion*
 	{
-		CRegion* newRegion = new CRegion(multiLocationIdx, std::move(name), std::move(locationName), storagePriceCHF, std::move(skuId));
+		CRegion* newRegion = new CRegion(multiLocationIdx, std::move(name), locationName, storagePrice, std::move(skuId));
 		mRegions.emplace_back(newRegion);
 		return newRegion;
 	}
@@ -141,57 +143,6 @@ namespace gcp
 
 	void CCloud::SetupDefaultCloud()
 	{
-		assert(mRegions.empty());
-
-		/*
-		self.multi_locations['asia'] = ['asia', 'asia-northeast1', 'asia-south1', 'asia-east1', 'asia-southeast1']
-		self.multi_locations['europe'] = ['europe', 'europe-west1', 'europe-west2', 'europe-west3', 'europe-west4']
-		self.multi_locations['us'] = ['us', 'us-central1', 'us-west1', 'us-east1', 'us-east4', 'northamerica-northeast1']
-		self.multi_locations['southamerica-east1'] = ['southamerica-east1']
-		#self.multi_locations['northamerica-northeast1'] = ['northamerica-northeast1']
-		self.multi_locations['australia-southeast1'] = ['australia-southeast1']
-		*/
-		/*
-		AddMultiLocation("asia", 0);
-		AddMultiLocation("australia-southeast1", 1);
-		AddMultiLocation("europe", 2);
-		AddMultiLocation("southamerica-east1", 3);
-		AddMultiLocation("us", 4);
-		*/
-		// 0 = asia
-		CreateRegion(0, "asia", "Asia", 0.02571790, "E653-0A40-3B69");
-		CreateRegion(0, "asia-northeast1", "Tokyo", 0.02275045, "1845-1496-2891");
-		CreateRegion(0, "asia-east1", "Taiwan", 0.01978300, "BAE2-255B-64A7");
-		CreateRegion(0, "asia-southeast1", "Singapore", 0.01978300, "76BA-5CAD-4338");
-		CreateRegion(0, "asia-south1", "Mumbai", 0.02275045, "2717-BEFE-3773");
-
-		// 1 = australia-southeast1
-		CreateRegion(1, "australia-southeast1", "Sydney", 0.02275045, "CF63-3CCD-F6EC");
-
-		// 2 = europe
-		CreateRegion(2, "europe", "Europe", 0.02571790, "EC40-8747-D6FF");
-		CreateRegion(2, "europe-west1", "Belgium", 0.01978300, "A703-5CB6-E0BF");
-		CreateRegion(2, "europe-west2", "London", 0.02275045, "BB55-3E5A-405C");
-		CreateRegion(2, "europe-west3", "Frankfurt", 0.02275045, "F272-7933-F065");
-		CreateRegion(2, "europe-west4", "Netherlands", 0.01978300, "89D8-0CF9-9F2E");
-
-		// 3 = southamerica-east1
-		CreateRegion(3, "southamerica-east1", "Sao Paulo", 0.03462025, "6B9B-6AB4-AC59");
-
-		// 4 = us
-		CreateRegion(4, "us", "US", 0.02571790, "0D5D-6E23-4250");
-		CreateRegion(4, "us-central1", "Iowa", 0.01978300, "E5F0-6A5D-7BAD");
-		CreateRegion(4, "us-west1", "Oregon", 0.01978300, "E5F0-6A5D-7BAD");
-		CreateRegion(4, "us-east1", "South Carolina", 0.01978300, "E5F0-6A5D-7BAD");
-		CreateRegion(4, "us-east4", "Northern Virginia", 0.02275045, "5F7A-5173-CF5B");
-
-		for(const std::unique_ptr<ISite>& site : mRegions)
-		{
-			auto region = dynamic_cast<CRegion*>(site.get());
-			assert(region != nullptr);
-			region->CreateStorageElement((region->GetName() + "_default_bucket"));
-		}
-
 		//CreateRegion("us", "northamerica-northeast1", "Montreal", 0.02275045, "E466-8D73-08F4");
 		//CreateRegion("northamerica-northeast1', 'northamerica-northeast1', 'Montreal', 0.02275045, "E466-8D73-08F4")
 
@@ -208,35 +159,19 @@ namespace gcp
 		eu - sa   96EB-C6ED-FBDE 0.1121580 0.1121580 0.1028115 0.0747720
 		na - sa   BB86-91E8-5450 0.1121580 0.1121580 0.1028115 0.0747720
 		*/
-		//setup bucket to bucket transfer cost
+
+		//download apac      1F8B-71B0-3D1B 0.0000000 0.1121580 0.1028115 0.0747720
+		//download australia 9B2D-2B7D-FA5C 0.1775835 0.1775835 0.1682370 0.1401975
+		//download china     4980-950B-BDA6 0.2149695 0.2149695 0.2056230 0.1869300
+		//download us emea   22EB-AAE8-FBCD 0.0000000 0.1121580 0.1028115 0.0747720
+
 
 		const CLinkSelector::PriceInfoType priceSameRegion = { {0,0} };
 		const CLinkSelector::PriceInfoType priceSameMulti = { {1,0.0093465} };
 
-		//cost_ww = {"asia": {}, "australia-southeast1": {}, "europe": {}, "southamerica-east1": {}, "us": {}}
 		typedef std::unordered_map<std::uint32_t, CLinkSelector::PriceInfoType> InnerMapType;
 		typedef std::unordered_map<std::uint32_t, InnerMapType> OuterMapType;
-		/*
-		const OuterMapType priceWW
-		{
-			{ "asia", {	{ "australia-southeast1", {{ 1024, 0.1775835 }, { 10240, 0.1682370 }, { 10240, 0.1401975 }}},
-						{ "europe",{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
-						{ "southamerica-east1",{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
-						{ "us",{ {1, 0.0}, { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } }
-					 }
-			},
-			{ "australia-southeast1", {	{ "europe",{ { 1024, 0.1775835 },{ 10240, 0.1682370 },{ 10240, 0.1401975 } } },
-										{ "southamerica-east1",{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
-										{ "us",{ { 1024, 0.1775835 },{ 10240, 0.1682370 },{ 10240, 0.1401975 } } }
-									  }
-			},
-			{ "europe", {	{ "southamerica-east1",{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
-							{ "us",{ { 1, 0.0 },{ 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } }
-						}
-			},
-			{ "southamerica-east1", { { "us",{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } } } }
-		};
-		*/
+
 		const OuterMapType priceWW
 		{
 			{ 0, {	{ 1, {{ 1024, 0.1775835 }, { 10240, 0.1682370 }, { 10240, 0.1401975 }}},
@@ -307,11 +242,6 @@ namespace gcp
 				}
 			}
 		}
-		//download apac      1F8B-71B0-3D1B 0.0000000 0.1121580 0.1028115 0.0747720
-		//download australia 9B2D-2B7D-FA5C 0.1775835 0.1775835 0.1682370 0.1401975
-		//download china     4980-950B-BDA6 0.2149695 0.2149695 0.2056230 0.1869300
-		//download us emea   22EB-AAE8-FBCD 0.0000000 0.1121580 0.1028115 0.0747720
-
 	}
 
     bool CCloud::TryConsumeConfig(const nlohmann::json& json)
@@ -319,7 +249,84 @@ namespace gcp
         nlohmann::json::const_iterator rootIt = json.find("gcp");
         if(rootIt == json.cend())
             return false;
+        for( const auto& [key, value] : rootIt.value().items() )
+        {
+            if( key == "regions" )
+            {
+                for(const auto& regionJson : value)
+                {
+                    std::unique_ptr<std::uint32_t> multiLocationIdx;
+                    std::string regionName, regionLocation, skuId;
+                    double price = 0;
+                    nlohmann::json bucketsJson;
+                    for(const auto& [regionJsonKey, regionJsonValue] : regionJson.items())
+                    {
+                        if(regionJsonKey == "multiLocationIdx")
+                            multiLocationIdx = std::make_unique<std::uint32_t>(regionJsonValue.get<std::uint32_t>());
+                        else if(regionJsonKey == "name")
+                            regionName = regionJsonValue.get<std::string>();
+                        else if(regionJsonKey == "location")
+                            regionLocation = regionJsonValue.get<std::string>();
+                        else if(regionJsonKey == "buckets")
+                            bucketsJson = regionJsonValue;
+                        else if(regionJsonKey == "price")
+                            price = regionJsonValue.get<double>();
+                        else if(regionJsonKey == "skuId")
+                            skuId = regionJsonValue.get<std::string>();
+                        else
+                            std::cout << "Ignoring unknown attribute while loading regions: " << regionJsonKey << std::endl;
+                    }
 
+                    if(multiLocationIdx == nullptr)
+                    {
+                        std::cout << "Couldn't find multiLocationIdx attribute of region" << std::endl;
+                        continue;
+                    }
+
+                    if (regionName.empty())
+                    {
+                        std::cout << "Couldn't find name attribute of region" << std::endl;
+                        continue;
+                    }
+
+                    if (regionLocation.empty())
+                    {
+                        std::cout << "Couldn't find location attribute of region: " << regionName << std::endl;
+                        continue;
+                    }
+
+                    std::cout << "Adding region " << regionName << " in " << regionLocation << std::endl;
+            		CRegion *region = CreateRegion(*multiLocationIdx, std::move(regionName), regionLocation, price, std::move(skuId));
+
+                    if (bucketsJson.empty())
+                    {
+                        std::cout << "No buckets to create for this region" << std::endl;
+                        continue;
+                    }
+
+                    for(const auto& bucketJson : bucketsJson)
+                    {
+                        std::string bucketName;
+                        for(const auto& [bucketJsonKey, bucketJsonValue] : bucketJson.items())
+                        {
+                            if(bucketJsonKey == "name")
+                                bucketName = bucketJsonValue.get<std::string>();
+                            else
+                                std::cout << "Ignoring unknown attribute while loading bucket: " << bucketJsonKey << std::endl;
+                        }
+
+                        if (bucketName.empty())
+                        {
+                            std::cout << "Couldn't find name attribute of bucket" << std::endl;
+                            continue;
+                        }
+
+                        std::cout << "Adding bucket " << bucketName << std::endl;
+                        region->CreateStorageElement(std::move(bucketName));
+                    }
+                }
+            }
+        }
         return true;
     }
 }

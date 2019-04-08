@@ -13,31 +13,6 @@
 
 
 
-bool InsertSite(ISite* site)
-{
-    std::stringstream row;
-    row << site->GetId() << ",'"
-        << site->GetName() << "','"
-        << site->GetLocationName() << "'";
-    return COutput::GetRef().InsertRow("Sites", row.str());
-}
-bool InsertStorageElement(CStorageElement* storageElement)
-{
-    std::stringstream row;
-    row << storageElement->GetId() << ","
-        << storageElement->GetSite()->GetId() << ",'"
-        << storageElement->GetName() << "'";
-    return COutput::GetRef().InsertRow("StorageElements", row.str());
-}
-bool InsertLinkSelector(CLinkSelector* linkselector)
-{
-    std::stringstream row;
-    row << linkselector->GetId() << ","
-        << linkselector->GetSrcSiteId() << ","
-        << linkselector->GetDstSiteId();
-    return COutput::GetRef().InsertRow("LinkSelectors", row.str());
-}
-
 void CSimpleSim::SetupDefaults()
 {
     COutput& output = COutput::GetRef();
@@ -102,7 +77,6 @@ void CSimpleSim::SetupDefaults()
                 region->CreateLinkSelector(gridSite.get(), ONE_GiB / 128);
             }
         }
-        mSchedule.push(std::make_shared<CBillingGenerator>(this));
     }
 
 
@@ -130,7 +104,7 @@ void CSimpleSim::SetupDefaults()
     auto c2cTransferNumGen = std::make_shared<CWavedTransferNumGen>(10, 40, 25, 0.075);
     auto c2cTransferGen = std::make_shared<CExponentialTransferGen>(this, c2cTransferMgr, c2cTransferNumGen, 25);
 
-    auto heartbeat = std::make_shared<CHeartbeat>(this, g2cTransferMgr, c2cTransferMgr, SECONDS_PER_DAY, SECONDS_PER_DAY);
+    auto heartbeat = std::make_shared<CHeartbeat>(this, g2cTransferMgr, c2cTransferMgr, static_cast<std::uint32_t>(SECONDS_PER_DAY), static_cast<TickType>(SECONDS_PER_DAY));
     heartbeat->mProccessDurations["DataGen"] = &(dataGen->mUpdateDurationSummed);
     heartbeat->mProccessDurations["G2CTransferUpdate"] = &(g2cTransferMgr->mUpdateDurationSummed);
     heartbeat->mProccessDurations["G2CTransferGen"] = &(g2cTransferGen->mUpdateDurationSummed);
@@ -138,44 +112,19 @@ void CSimpleSim::SetupDefaults()
     heartbeat->mProccessDurations["C2CTransferGen"] = &(c2cTransferGen->mUpdateDurationSummed);
     heartbeat->mProccessDurations["Reaper"] = &(reaper->mUpdateDurationSummed);
 
-
-    for(const std::unique_ptr<CGridSite>& gridSite : mRucio->mGridSites)
-    {
-        ok = InsertSite(gridSite.get());
-        assert(ok);
-        for(const std::unique_ptr<CStorageElement>& storageElement : gridSite->mStorageElements)
-        {
-            ok = InsertStorageElement(storageElement.get());
-            assert(ok);
-        }
-        for(const std::unique_ptr<CLinkSelector>& linkselector : gridSite->mLinkSelectors)
-        {
-            ok = InsertLinkSelector(linkselector.get());
-            assert(ok);
-        }
-    }
-
     for(const std::unique_ptr<ISite>& cloudSite : mClouds[0]->mRegions)
     {
         auto region = dynamic_cast<gcp::CRegion*>(cloudSite.get());
         assert(region);
-        ok = InsertSite(region);
-        assert(ok);
         for (const std::unique_ptr<gcp::CBucket>& bucket : region->mStorageElements)
         {
-            ok = InsertStorageElement(bucket.get());
-            assert(ok);
             g2cTransferGen->mDstStorageElements.push_back(bucket.get());
             c2cTransferGen->mSrcStorageElements.push_back(bucket.get());
             c2cTransferGen->mDstStorageElements.push_back(bucket.get());
         }
-        for(const std::unique_ptr<CLinkSelector>& linkselector : region->mLinkSelectors)
-        {
-            ok = InsertLinkSelector(linkselector.get());
-            assert(ok);
-        }
     }
 
+    mSchedule.push(std::make_shared<CBillingGenerator>(this));
     mSchedule.push(dataGen);
     mSchedule.push(reaper);
     mSchedule.push(g2cTransferMgr);
