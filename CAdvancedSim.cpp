@@ -89,11 +89,13 @@ void CAdvancedSim::SetupDefaults()
 
     auto reaper = std::make_shared<CReaper>(mRucio.get(), 600, 600);
 
-    auto x2cTransferMgr = std::make_shared<CTransferManager>(20, 100);
-    auto x2cTransferNumGen = std::make_shared<CWavedTransferNumGen>(12, 200, 25, 0.075);
-    auto x2cTransferGen = std::make_shared<CSrcPrioTransferGen>(this, x2cTransferMgr, x2cTransferNumGen, 25);
+    auto x2cTransferMgr = std::make_shared<CFixedTimeTransferManager>(20, 100);
+    //auto x2cTransferNumGen = std::make_shared<CWavedTransferNumGen>(12, 200, 25, 0.075);
+    //auto x2cTransferGen = std::make_shared<CSrcPrioTransferGen>(this, x2cTransferMgr, x2cTransferNumGen, 25);
+    auto x2cTransferGen = std::make_shared<CJobSlotTransferGen>(this, x2cTransferMgr, 25);
 
-    auto heartbeat = std::make_shared<CHeartbeat>(this, x2cTransferMgr, x2cTransferMgr, static_cast<std::uint32_t>(SECONDS_PER_DAY), static_cast<TickType>(SECONDS_PER_DAY));
+
+    auto heartbeat = std::make_shared<CHeartbeat>(this, x2cTransferMgr, nullptr, static_cast<std::uint32_t>(SECONDS_PER_DAY), static_cast<TickType>(SECONDS_PER_DAY));
     heartbeat->mProccessDurations["DataGen"] = &(dataGen->mUpdateDurationSummed);
     heartbeat->mProccessDurations["X2CTransferUpdate"] = &(x2cTransferMgr->mUpdateDurationSummed);
     heartbeat->mProccessDurations["X2CTransferGen"] = &(x2cTransferGen->mUpdateDurationSummed);
@@ -115,7 +117,9 @@ void CAdvancedSim::SetupDefaults()
         for (const std::unique_ptr<gcp::CBucket>& bucket : region->mStorageElements)
         {
             x2cTransferGen->mSrcStorageElementIdToPrio[bucket->GetId()] = 1;
-            x2cTransferGen->mDstStorageElements.push_back(bucket.get());
+            //x2cTransferGen->mDstStorageElements.push_back(bucket.get());
+            CJobSlotTransferGen::SJobSlotInfo jobslot = {5000, {}};
+            x2cTransferGen->mDstInfo.push_back( std::make_pair(bucket.get(), jobslot) );
         }
     }
 

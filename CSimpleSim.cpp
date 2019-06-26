@@ -104,7 +104,8 @@ void CSimpleSim::SetupDefaults()
     auto c2cTransferNumGen = std::make_shared<CWavedTransferNumGen>(10, 40, 25, 0.075);
     auto c2cTransferGen = std::make_shared<CExponentialTransferGen>(this, c2cTransferMgr, c2cTransferNumGen, 25);
 
-    auto heartbeat = std::make_shared<CHeartbeat>(this, g2cTransferMgr, c2cTransferMgr, static_cast<std::uint32_t>(SECONDS_PER_DAY), static_cast<TickType>(SECONDS_PER_DAY));
+    //auto heartbeat = std::make_shared<CHeartbeat>(this, g2cTransferMgr, c2cTransferMgr, static_cast<std::uint32_t>(SECONDS_PER_DAY), static_cast<TickType>(SECONDS_PER_DAY));
+    auto heartbeat = std::make_shared<CHeartbeat>(this, nullptr, c2cTransferMgr, static_cast<std::uint32_t>(SECONDS_PER_DAY), static_cast<TickType>(SECONDS_PER_DAY));
     heartbeat->mProccessDurations["DataGen"] = &(dataGen->mUpdateDurationSummed);
     heartbeat->mProccessDurations["G2CTransferUpdate"] = &(g2cTransferMgr->mUpdateDurationSummed);
     heartbeat->mProccessDurations["G2CTransferGen"] = &(g2cTransferGen->mUpdateDurationSummed);

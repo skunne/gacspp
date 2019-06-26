@@ -40,6 +40,7 @@ public:
     void OnUpdate(const TickType now) final;
 };
 
+
 class CReaper : public CScheduleable
 {
 private:
@@ -64,6 +65,7 @@ public:
     void OnUpdate(const TickType now) final;
 };
 
+
 class CTransferManager : public CScheduleable
 {
 private:
@@ -82,7 +84,7 @@ private:
         STransfer(  std::shared_ptr<SReplica> srcReplica,
                     std::shared_ptr<SReplica> dstReplica,
                     CLinkSelector* const linkSelector,
-                    TickType startTick);
+                    const TickType startTick);
     };
 
     std::vector<STransfer> mActiveTransfers;
@@ -102,11 +104,55 @@ public:
     {return mActiveTransfers.size();}
 };
 
+
+class CFixedTimeTransferManager : public CScheduleable
+{
+private:
+    std::size_t mOutputQueryIdx;
+
+    TickType mLastUpdated = 0;
+    std::uint32_t mTickFreq;
+
+    struct STransfer
+    {
+        std::weak_ptr<SReplica> mSrcReplica;
+        std::weak_ptr<SReplica> mDstReplica;
+        CLinkSelector* mLinkSelector;
+        TickType mStartTick;
+
+        std::uint32_t mIncreasePerTick;
+
+        STransfer(  std::shared_ptr<SReplica> srcReplica,
+                    std::shared_ptr<SReplica> dstReplica,
+                    CLinkSelector* const linkSelector,
+                    const TickType startTick,
+                    const std::uint32_t increasePerTick);
+    };
+
+    std::vector<STransfer> mActiveTransfers;
+
+public:
+    std::uint32_t mNumCompletedTransfers = 0;
+    TickType mSummedTransferDuration = 0;
+
+public:
+    CFixedTimeTransferManager(const std::uint32_t tickFreq, const TickType startTick=0);
+
+    void OnUpdate(const TickType now) final;
+
+    void CreateTransfer(std::shared_ptr<SReplica> srcReplica, std::shared_ptr<SReplica> dstReplica, const TickType now, const TickType duration);
+
+    inline auto GetNumActiveTransfers() const -> std::size_t
+    {return mActiveTransfers.size();}
+};
+
+
 class CBaseTransferNumGen
 {
 public:
     virtual auto GetNumToCreate(RNGEngineType& rngEngine, std::uint32_t numActive, const TickType now) -> std::uint32_t = 0;
 };
+
 
 class CWavedTransferNumGen : public CBaseTransferNumGen
 {
@@ -123,6 +169,7 @@ public:
 
     auto GetNumToCreate(RNGEngineType& rngEngine, std::uint32_t numActive, const TickType now) -> std::uint32_t;
 };
+
 
 class CUniformTransferGen : public CScheduleable
 {
@@ -146,6 +193,7 @@ public:
     void OnUpdate(const TickType now) final;
 };
 
+
 class CExponentialTransferGen : public CScheduleable
 {
 private:
@@ -167,6 +215,7 @@ public:
 
     void OnUpdate(const TickType now) final;
 };
+
 
 class CSrcPrioTransferGen : public CScheduleable
 {
@@ -191,12 +240,39 @@ public:
 };
 
 
+class CJobSlotTransferGen : public CScheduleable
+{
+private:
+    IBaseSim* mSim;
+    std::shared_ptr<CFixedTimeTransferManager> mTransferMgr;
+    std::uint32_t mTickFreq;
+
+public:
+
+    struct SJobSlotInfo
+    {
+        std::uint32_t mNumMaxSlots;
+        std::vector<std::pair<TickType, std::uint32_t>> mSchedule;
+    };
+
+    std::unordered_map<IdType, int> mSrcStorageElementIdToPrio;
+    std::vector<std::pair<CStorageElement*, SJobSlotInfo>> mDstInfo;
+
+public:
+    CJobSlotTransferGen(IBaseSim* sim,
+                        std::shared_ptr<CFixedTimeTransferManager> transferMgr,
+                        const std::uint32_t tickFreq,
+                        const TickType startTick=0 );
+
+    void OnUpdate(const TickType now) final;
+};
+
 
 class CHeartbeat : public CScheduleable
 {
 private:
     IBaseSim* mSim;
-    std::shared_ptr<CTransferManager> mG2CTransferMgr;
+    std::shared_ptr<CFixedTimeTransferManager> mG2CTransferMgr;
     std::shared_ptr<CTransferManager> mC2CTransferMgr;
     std::uint32_t mTickFreq;
 
@@ -206,7 +282,7 @@ public:
     std::unordered_map<std::string, std::chrono::duration<double>*> mProccessDurations;
 
 public:
-    CHeartbeat(IBaseSim* sim, std::shared_ptr<CTransferManager> g2cTransferMgr, std::shared_ptr<CTransferManager> c2cTransferMgr, const std::uint32_t tickFreq, const TickType startTick=0);
+    CHeartbeat(IBaseSim* sim, std::shared_ptr<CFixedTimeTransferManager> g2cTransferMgr, std::shared_ptr<CTransferManager> c2cTransferMgr, const std::uint32_t tickFreq, const TickType startTick=0);
 
     void OnUpdate(const TickType now) final;
 };
