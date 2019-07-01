@@ -1,0 +1,6 @@
+{
+"output": {
+    "keepInMemory": true,
+    "filename": "-output.db"
+    }
+}

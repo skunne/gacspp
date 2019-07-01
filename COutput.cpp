@@ -172,16 +172,21 @@ COutput::~COutput()
     Shutdown();
 }
 
-bool COutput::Initialise(const std::string& dbFileNamePath, std::string&& backupFilePath)
+bool COutput::Initialise(const std::filesystem::path& dbFilePath, bool keepInMemory)
 {
     assert(mDB == nullptr);
-
-    mBackupFilePath = std::move(backupFilePath);
 
     if(sqlite3_config(SQLITE_CONFIG_LOG, COutput::LogCallback, nullptr) != SQLITE_OK)
         return false;
 
-    sqlite3_open_v2(dbFileNamePath.c_str(), &mDB, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+    if(keepInMemory)
+    {
+        mDBFilePath = dbFilePath;
+        sqlite3_open_v2(":memory:", &mDB, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+    }
+    else
+        sqlite3_open_v2(dbFilePath.c_str(), &mDB, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+
     if(mDB == nullptr)
         return false;
 
@@ -210,24 +215,24 @@ void COutput::Shutdown()
         sqlite3_finalize(mPreparedStatements.back());
         mPreparedStatements.pop_back();
     }
-    if (!mBackupFilePath.empty())
-    {
-        sqlite3* diskDB;
-        int ok = sqlite3_open(mBackupFilePath.c_str(), &diskDB);
-        if (ok == SQLITE_OK)
-        {
-            sqlite3_backup* backup = sqlite3_backup_init(diskDB, "main", mDB, "main");
-            if (backup)
-            {
-                sqlite3_backup_step(backup, -1);
-                sqlite3_backup_finish(backup);
-            }
-            sqlite3_close(diskDB);
-        }
-    }
 
     if(mDB != nullptr)
     {
+        if (!mDBFilePath.empty())
+        {
+            sqlite3* diskDB;
+            int ok = sqlite3_open(mDBFilePath.c_str(), &diskDB);
+            if (ok == SQLITE_OK)
+            {
+                sqlite3_backup* backup = sqlite3_backup_init(diskDB, "main", mDB, "main");
+                if (backup)
+                {
+                    sqlite3_backup_step(backup, -1);
+                    sqlite3_backup_finish(backup);
+                }
+                sqlite3_close(diskDB);
+            }
+        }
         sqlite3_close(mDB);
         mDB = nullptr;
     }
