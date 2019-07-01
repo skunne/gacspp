@@ -27,6 +27,7 @@ public:
 	virtual auto CreateRegion(const std::uint32_t multiLocationIdx,
                               std::string&& name,
                               const std::string& locationName,
+                              const std::uint32_t numJobSlots,
                               double storagePriceCHF,
                               std::string&& skuId) -> ISite* = 0;
                               

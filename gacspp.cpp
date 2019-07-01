@@ -16,9 +16,9 @@ int main(int argc, char** argv)
         dbFileNamePath << STATIC_DB_NAME;
     #else
         auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        dbFileNamePath << std::put_time(std::localtime(&now), "%y%j_%H%M%S") << "-output.db";
+        dbFileNamePath << "R:\\" << std::put_time(std::localtime(&now), "%y%j_%H%M%S") << "-output.db";
     #endif
-        if(!output.Initialise(dbFileNamePath.str()))
+        if(!output.Initialise(":memory:", dbFileNamePath.str()))
             return 1;
     }
 

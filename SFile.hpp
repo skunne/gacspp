@@ -40,6 +40,7 @@ public:
 struct SReplica
 {
 private:
+    IdType mId;
     SFile* mFile;
     CStorageElement* mStorageElement;
     std::uint32_t mCurSize = 0;
@@ -59,11 +60,12 @@ public:
 
     auto Increase(std::uint32_t amount, const TickType now) -> std::uint32_t;
 	void OnRemoveByFile(const TickType now);
-	void Remove(const TickType now);
 
 	inline bool IsComplete() const
 	{return mCurSize == mFile->GetSize();}
 
+    inline auto GetId() const -> IdType
+    {return mId;}
     inline auto GetFile() -> SFile*
     {return mFile;}
     inline auto GetFile() const -> const SFile*

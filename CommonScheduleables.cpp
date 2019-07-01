@@ -41,7 +41,7 @@ void CDataGenerator::OnUpdate(const TickType now)
 
 auto CDataGenerator::GetRandomFileSize() -> std::uint32_t
 {
-    const double min = ONE_GiB / 16;
+    const double min = 64 * ONE_MiB;
     const double max = static_cast<double>(std::numeric_limits<std::uint32_t>::max());
     const double val = GiB_TO_BYTES(std::abs(mFileSizeRNG(mSim->mRNGEngine)));
     return static_cast<std::uint32_t>(std::clamp(val, min, max));
@@ -80,7 +80,7 @@ auto CDataGenerator::CreateFilesAndReplicas(const std::uint32_t numFiles, const 
 
         fileInsertStmts->AddValue(file->GetId());
         fileInsertStmts->AddValue(now);
-        fileInsertStmts->AddValue(lifetime);
+        fileInsertStmts->AddValue(now + lifetime);
         fileInsertStmts->AddValue(fileSize);
 
         bytesOfFilesGen += fileSize;
@@ -93,8 +93,11 @@ auto CDataGenerator::CreateFilesAndReplicas(const std::uint32_t numFiles, const 
             auto r = (*selectedElementIt)->CreateReplica(file);
             r->Increase(fileSize, now);
             r->mExpiresAt = now + (lifetime / numReplicasPerFile);
+            replicaInsertStmts->AddValue(r->GetId());
             replicaInsertStmts->AddValue(file->GetId());
             replicaInsertStmts->AddValue((*selectedElementIt)->GetId());
+            replicaInsertStmts->AddValue(now);
+            replicaInsertStmts->AddValue(r->mExpiresAt);
             std::iter_swap(selectedElementIt, reverseRSEIt);
 			++reverseRSEIt;
         }
@@ -131,37 +134,41 @@ CBillingGenerator::CBillingGenerator(IBaseSim* sim, const std::uint32_t tickFreq
 
 void CBillingGenerator::OnUpdate(const TickType now)
 {
+    std::stringstream summary;
     const std::string caption = std::string(10, '=') + " Monthly Summary " + std::string(10, '=');
-    std::cout << std::endl;
-    std::cout << std::string(caption.length(), '=') << std::endl;
-    std::cout << caption << std::endl;
-    std::cout << std::string(caption.length(), '=') << std::endl;
 
-    std::cout << "-Grid2Cloud Link Stats-" << std::endl;
+    summary << std::fixed << std::setprecision(2);
+
+    summary << std::endl;
+    summary << std::string(caption.length(), '=') << std::endl;
+    summary << caption << std::endl;
+    summary << std::string(caption.length(), '=') << std::endl;
+
+    summary << "-Grid2Cloud Link Stats-" << std::endl;
     for(auto& srcGridSite : mSim->mRucio->mGridSites)
     {
-        std::cout << srcGridSite->GetName() << std::endl;
+        summary << srcGridSite->GetName() << std::endl;
         for (auto& dstRegion : mSim->mClouds[0]->mRegions)
         {
             auto link = srcGridSite->GetLinkSelector(dstRegion.get());
             if (link == nullptr)
                 continue;
-            std::cout << "\t--> " << dstRegion->GetName() << ": " << link->mDoneTransfers << std::endl;
+            summary << "\t--> " << dstRegion->GetName() << ": " << link->mDoneTransfers << std::endl;
             link->mDoneTransfers = 0;
         }
     }
     for(auto& cloud : mSim->mClouds)
     {
-        std::cout << std::endl;
-        std::cout<<cloud->GetName()<<" - Billing for Month "<<(now/SECONDS_PER_MONTH)<<":\n";
+        summary << std::endl;
+        summary<<cloud->GetName()<<" - Billing for Month "<<SECONDS_TO_MONTHS(now)<<":\n";
         auto res = cloud->ProcessBilling(now);
-        std::cout << "\tStorage: " << res.first << " CHF" << std::endl;
-        std::cout << "\tNetwork: " << res.second.first << " CHF" << std::endl;
-        std::cout << "\tNetwork: " << res.second.second << " GiB" << std::endl;
+        summary << "\tStorage: " << res.first << " CHF" << std::endl;
+        summary << "\tNetwork: " << res.second.first << " CHF" << std::endl;
+        summary << "\tNetwork: " << res.second.second << " GiB" << std::endl;
     }
 
-    std::cout << std::string(caption.length(), '=') << std::endl;
-    std::cout << std::endl;
+    summary << std::string(caption.length(), '=') << std::endl;
+    std::cout << summary.str() << std::endl;
 
     mNextCallTick = now + mTickFreq;
 }
@@ -183,7 +190,7 @@ CTransferManager::CTransferManager(const std::uint32_t tickFreq, const TickType 
       mTickFreq(tickFreq)
 {
     mActiveTransfers.reserve(1024*1024);
-    mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?, ?);");
+    mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?);");
 }
 
 void CTransferManager::CreateTransfer(std::shared_ptr<SReplica> srcReplica, std::shared_ptr<SReplica> dstReplica, const TickType now)
@@ -233,9 +240,8 @@ void CTransferManager::OnUpdate(const TickType now)
         if(dstReplica->IsComplete())
         {
             outputs->AddValue(GetNewId());
-            outputs->AddValue(dstReplica->GetFile()->GetId());
-            outputs->AddValue(srcReplica->GetStorageElement()->GetId());
-            outputs->AddValue(dstReplica->GetStorageElement()->GetId());
+            outputs->AddValue(srcReplica->GetId());
+            outputs->AddValue(dstReplica->GetId());
             outputs->AddValue(transfer.mStartTick);
             outputs->AddValue(now);
 
@@ -276,7 +282,7 @@ CFixedTimeTransferManager::CFixedTimeTransferManager(const std::uint32_t tickFre
       mTickFreq(tickFreq)
 {
     mActiveTransfers.reserve(1024*1024);
-    mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?, ?);");
+    mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?);");
 }
 
 void CFixedTimeTransferManager::CreateTransfer(std::shared_ptr<SReplica> srcReplica, std::shared_ptr<SReplica> dstReplica, const TickType now, const TickType duration)
@@ -326,9 +332,8 @@ void CFixedTimeTransferManager::OnUpdate(const TickType now)
         if(dstReplica->IsComplete())
         {
             outputs->AddValue(GetNewId());
-            outputs->AddValue(dstReplica->GetFile()->GetId());
-            outputs->AddValue(srcReplica->GetStorageElement()->GetId());
-            outputs->AddValue(dstReplica->GetStorageElement()->GetId());
+            outputs->AddValue(srcReplica->GetId());
+            outputs->AddValue(dstReplica->GetId());
             outputs->AddValue(transfer.mStartTick);
             outputs->AddValue(now);
 
@@ -415,8 +420,11 @@ void CUniformTransferGen::OnUpdate(const TickType now)
                 std::shared_ptr<SReplica> newReplica = dstStorageElement->CreateReplica(file);
                 if(newReplica != nullptr)
                 {
+                    replicaInsertStmts->AddValue(newReplica->GetId());
                     replicaInsertStmts->AddValue(file->GetId());
                     replicaInsertStmts->AddValue(dstStorageElement->GetId());
+                    replicaInsertStmts->AddValue(now);
+                    replicaInsertStmts->AddValue(newReplica->mExpiresAt);
                     mTransferMgr->CreateTransfer(curReplica, newReplica, now);
                     ++numCreated;
                 }
@@ -484,8 +492,11 @@ void CExponentialTransferGen::OnUpdate(const TickType now)
                     std::shared_ptr<SReplica> newReplica = dstStorageElement->CreateReplica(file);
                     if(newReplica != nullptr)
                     {
+                        replicaInsertStmts->AddValue(newReplica->GetId());
                         replicaInsertStmts->AddValue(file->GetId());
                         replicaInsertStmts->AddValue(dstStorageElement->GetId());
+                        replicaInsertStmts->AddValue(now);
+                        replicaInsertStmts->AddValue(newReplica->mExpiresAt);
                         mTransferMgr->CreateTransfer(curReplica, newReplica, now);
                         wasTransferCreated = true;
                         break;
@@ -544,7 +555,7 @@ void CSrcPrioTransferGen::OnUpdate(const TickType now)
         CStorageElement* const dstStorageElement = mDstStorageElements[static_cast<std::size_t>(dstStorageElementRndSelecter(rngEngine) * 2) % numDstStorageElements];
         SFile* fileToTransfer = allFiles[fileRndSelector(rngEngine)].get();
 
-        for(std::uint32_t i=0; i<5 && fileToTransfer->mReplicas.empty(); ++i)
+        for(std::uint32_t i = 0; i < 5 && fileToTransfer->mReplicas.empty() && fileToTransfer->mExpiresAt < (now + 100); ++i)
             fileToTransfer = allFiles[fileRndSelector(rngEngine)].get();
 
         const std::vector<std::shared_ptr<SReplica>>& replicas = fileToTransfer->mReplicas;
@@ -600,8 +611,11 @@ void CSrcPrioTransferGen::OnUpdate(const TickType now)
                     }
                 }
             }
+            replicaInsertStmts->AddValue(newReplica->GetId());
             replicaInsertStmts->AddValue(fileToTransfer->GetId());
             replicaInsertStmts->AddValue(dstStorageElement->GetId());
+            replicaInsertStmts->AddValue(now);
+            replicaInsertStmts->AddValue(newReplica->mExpiresAt);
 
             mTransferMgr->CreateTransfer(bestSrcReplica, newReplica, now);
         }
@@ -654,7 +668,6 @@ void CJobSlotTransferGen::OnUpdate(const TickType now)
         {
             if(schedule[idx].first <= now)
             {
-                std::swap(schedule[idx], schedule.back());
                 schedule[idx] = std::move(schedule.back());
                 schedule.pop_back();
                 continue;
@@ -662,17 +675,17 @@ void CJobSlotTransferGen::OnUpdate(const TickType now)
             usedSlots += schedule[idx].second;
             idx += 1;
         }
-
+ 
         assert(numMaxSlots >= usedSlots);
 
         // todo: consider mTickFreq
         std::uint32_t flexCreationLimit = std::min(numMaxSlots - usedSlots, std::uint32_t(1 + (0.01 * numMaxSlots)));
-        std::pair<TickType, std::uint32_t> newJobs = std::make_pair(now+600, 0);
+        std::pair<TickType, std::uint32_t> newJobs = std::make_pair(now+900, 0);
         for(std::uint32_t totalTransfersCreated=0; totalTransfersCreated<flexCreationLimit; ++totalTransfersCreated)
         {
             SFile* fileToTransfer = allFiles[fileRndSelector(rngEngine)].get();
 
-            for(std::uint32_t i=0; i<10 && fileToTransfer->mReplicas.empty(); ++i)
+            for(std::uint32_t i = 0; i < 10 && fileToTransfer->mReplicas.empty() && fileToTransfer->mExpiresAt < (now + 100); ++i)
                 fileToTransfer = allFiles[fileRndSelector(rngEngine)].get();
 
             const std::vector<std::shared_ptr<SReplica>>& replicas = fileToTransfer->mReplicas;
@@ -728,8 +741,11 @@ void CJobSlotTransferGen::OnUpdate(const TickType now)
                         }
                     }
                 }
+                replicaInsertStmts->AddValue(newReplica->GetId());
                 replicaInsertStmts->AddValue(fileToTransfer->GetId());
                 replicaInsertStmts->AddValue(dstStorageElement->GetId());
+                replicaInsertStmts->AddValue(now);
+                replicaInsertStmts->AddValue(newReplica->mExpiresAt);
 
                 mTransferMgr->CreateTransfer(bestSrcReplica, newReplica, now, 60);
                 newJobs.second += 1;

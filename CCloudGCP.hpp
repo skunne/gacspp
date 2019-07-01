@@ -11,9 +11,12 @@ namespace gcp
 	class CBucket : public CStorageElement
 	{
 	private:
-		TickType mTimeAtLastReset = 0;
-		TickType mStorageAtLastReset = 0;
-		std::vector<std::pair<TickType, std::int64_t>> mBucketEvents;
+        CRegion* mRegion;
+        TickType mTimeLastCostUpdate = 0;
+        double mCosts = 0;
+		//TickType mTimeAtLastReset = 0;
+		//TickType mStorageAtLastReset = 0;
+		//std::vector<std::pair<TickType, std::int64_t>> mBucketEvents;
 
 	public:
 
@@ -29,12 +32,13 @@ namespace gcp
 	{
 	private:
 		std::string mSKUId;
-		double mStoragePrice;
+		double mStoragePrice = 0;
 
 	public:
+        std::uint32_t mNumJobSlots = 0;
 		std::vector<std::unique_ptr<CBucket>> mStorageElements;
 
-		CRegion(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName, const double storagePrice, std::string&& skuId);
+		CRegion(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName, const std::uint32_t numJobSlots, const double storagePrice, std::string&& skuId);
 
 		auto CreateStorageElement(std::string&& name) -> CBucket* final;
 		double CalculateStorageCosts(TickType now);
@@ -52,6 +56,7 @@ namespace gcp
 		auto CreateRegion(const std::uint32_t multiLocationIdx,
                           std::string&& name,
                           const std::string& locationName,
+                          const std::uint32_t numJobSlots,
                           const double storagePrice,
                           std::string&& skuId) -> CRegion* final;
 

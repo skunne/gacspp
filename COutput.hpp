@@ -60,6 +60,8 @@ private:
     sqlite3* mDB = nullptr;
     std::vector<sqlite3_stmt*> mPreparedStatements;
 
+    std::string mBackupFilePath;
+
 public:
     COutput(const COutput&) = delete;
     COutput& operator=(const COutput&) = delete;
@@ -71,7 +73,7 @@ public:
     static auto GetRef() -> COutput&;
     static void LogCallback(void* data, int errorCode, const char* errorMessage);
 
-    bool Initialise(const std::string& dbFileNamePath);
+    bool Initialise(const std::string& dbFileNamePath, std::string&& backupFilePath = "");
     bool StartConsumer();
     void Shutdown();
 

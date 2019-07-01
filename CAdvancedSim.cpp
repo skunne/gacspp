@@ -31,25 +31,32 @@ void CAdvancedSim::SetupDefaults()
     ok = output.CreateTable("LinkSelectors", "id BIGINT PRIMARY KEY, srcSiteId BIGINT, dstSiteId BIGINT, FOREIGN KEY(srcSiteId) REFERENCES Sites(id), FOREIGN KEY(dstSiteId) REFERENCES Sites(id)");
     assert(ok);
 
-    ok = output.CreateTable("Files", "id BIGINT PRIMARY KEY, createdAt BIGINT, lifetime BIGINT, filesize INTEGER");
+    ok = output.CreateTable("Files", "id BIGINT PRIMARY KEY, createdAt BIGINT, expiredAt BIGINT, filesize INTEGER");
     assert(ok);
 
-    ok = output.CreateTable("Replicas", "fileId BIGINT, storageElementId BIGINT, PRIMARY KEY(fileId, storageElementId)");
-    assert(ok);
-
+    columns.str(std::string());
     columns << "id BIGINT PRIMARY KEY,"
             << "fileId BIGINT,"
-            << "srcStorageElementId BIGINT,"
-            << "dstStorageElementId BIGINT,"
+            << "storageElementId BIGINT,"
+            << "createdAt BIGINT,"
+            << "expiredAt BIGINT,"
+            << "FOREIGN KEY(fileId) REFERENCES Files(id),"
+            << "FOREIGN KEY(storageElementId) REFERENCES StorageElements(id)";
+    ok = output.CreateTable("Replicas", columns.str());
+    assert(ok);
+
+    columns.str(std::string());
+    columns << "id BIGINT PRIMARY KEY,"
+            << "srcReplicaId BIGINT,"
+            << "dstReplicaId BIGINT,"
             << "startTick BIGINT,"
             << "endTick BIGINT,"
-            << "FOREIGN KEY(fileId) REFERENCES Files(id),"
-            << "FOREIGN KEY(srcStorageElementId) REFERENCES StorageElements(id),"
-            << "FOREIGN KEY(dstStorageElementId) REFERENCES StorageElements(id)";
+            << "FOREIGN KEY(srcReplicaId) REFERENCES Replicas(id),"
+            << "FOREIGN KEY(dstReplicaId) REFERENCES Replicas(id)";
     ok = output.CreateTable("Transfers", columns.str());
     assert(ok);
 
-    CStorageElement::mOutputQueryIdx = output.AddPreparedSQLStatement("INSERT INTO Replicas VALUES(?, ?);");
+    CStorageElement::mOutputQueryIdx = output.AddPreparedSQLStatement("INSERT INTO Replicas VALUES(?, ?, ?, ?, ?);");
 
 
     ////////////////////////////
@@ -118,7 +125,7 @@ void CAdvancedSim::SetupDefaults()
         {
             x2cTransferGen->mSrcStorageElementIdToPrio[bucket->GetId()] = 1;
             //x2cTransferGen->mDstStorageElements.push_back(bucket.get());
-            CJobSlotTransferGen::SJobSlotInfo jobslot = {5000, {}};
+            CJobSlotTransferGen::SJobSlotInfo jobslot = {region->mNumJobSlots, {}};
             x2cTransferGen->mDstInfo.push_back( std::make_pair(bucket.get(), jobslot) );
         }
     }

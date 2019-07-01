@@ -22,7 +22,7 @@ private:
     IBaseSim* mSim;
 
     std::normal_distribution<float> mNumFilesRNG {40, 1};
-    std::normal_distribution<double> mFileSizeRNG {1.5, 0.25};
+    std::normal_distribution<double> mFileSizeRNG {0.5, 0.25};
     std::normal_distribution<float> mFileLifetimeRNG {6, 1};
 
     std::uint32_t mTickFreq;

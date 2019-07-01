@@ -7,6 +7,7 @@
             "multiLocationIdx": 0,
             "name": "asia",
             "location": "Asia",
+			"numJobSlots": 0,
             "price": 0.02571790,
             "skuId": "E653-0A40-3B69",
             "buckets":
@@ -20,6 +21,7 @@
             "multiLocationIdx": 0,
             "name": "asia-northeast1",
             "location": "Tokyo",
+			"numJobSlots": 500,
             "price": 0.02275045,
             "skuId": "1845-1496-2891",
             "buckets":
@@ -33,6 +35,7 @@
             "multiLocationIdx": 0,
             "name": "asia-east1",
             "location": "Taiwan",
+			"numJobSlots": 500,
             "price": 0.01978300,
             "skuId": "BAE2-255B-64A7",
             "buckets":
@@ -46,6 +49,7 @@
             "multiLocationIdx": 0,
             "name": "asia-southeast1",
             "location": "Singapore",
+			"numJobSlots": 0,
             "price": 0.01978300,
             "skuId": "76BA-5CAD-4338",
             "buckets":
@@ -59,6 +63,7 @@
             "multiLocationIdx": 0,
             "name": "asia-south1",
             "location": "Mumbai",
+			"numJobSlots": 500,
             "price": 0.02275045,
             "skuId": "2717-BEFE-3773",
             "buckets":
@@ -72,6 +77,7 @@
             "multiLocationIdx": 1,
             "name": "australia-southeast1",
             "location": "Sydney",
+			"numJobSlots": 1000,
             "price": 0.02275045,
             "skuId": "CF63-3CCD-F6EC",
             "buckets":
@@ -85,6 +91,7 @@
             "multiLocationIdx": 2,
             "name": "europe",
             "location": "Europe",
+			"numJobSlots": 0,
             "price": 0.02571790,
             "skuId": "EC40-8747-D6FF",
             "buckets":
@@ -98,6 +105,7 @@
             "multiLocationIdx": 2,
             "name": "europe-west1",
             "location": "Belgium",
+			"numJobSlots": 2000,
             "price": 0.01978300,
             "skuId": "A703-5CB6-E0BF",
             "buckets":
@@ -111,6 +119,7 @@
             "multiLocationIdx": 2,
             "name": "europe-west2",
             "location": "London",
+			"numJobSlots": 1000,
             "price": 0.02275045,
             "skuId": "BB55-3E5A-405C",
             "buckets":
@@ -124,6 +133,7 @@
             "multiLocationIdx": 2,
             "name": "europe-west3",
             "location": "Frankfurt",
+			"numJobSlots": 5000,
             "price": 0.02275045,
             "skuId": "F272-7933-F065",
             "buckets":
@@ -137,6 +147,7 @@
             "multiLocationIdx": 2,
             "name": "europe-west4",
             "location": "Netherlands",
+			"numJobSlots": 1000,
             "price": 0.01978300,
             "skuId": "89D8-0CF9-9F2E",
             "buckets":
@@ -150,6 +161,7 @@
             "multiLocationIdx": 3,
             "name": "southamerica-east1",
             "location": "Sao Paulo",
+			"numJobSlots": 500,
             "price": 0.03462025,
             "skuId": "6B9B-6AB4-AC59",
             "buckets":
@@ -163,6 +175,7 @@
             "multiLocationIdx": 4,
             "name": "us",
             "location": "US",
+			"numJobSlots": 0,
             "price": 0.02571790,
             "skuId": "0D5D-6E23-4250",
             "buckets":
@@ -176,6 +189,7 @@
             "multiLocationIdx": 4,
             "name": "us-central1",
             "location": "Iowa",
+			"numJobSlots": 1000,
             "price": 0.01978300,
             "skuId": "E5F0-6A5D-7BAD",
             "buckets":
@@ -189,6 +203,7 @@
             "multiLocationIdx": 4,
             "name": "us-west1",
             "location": "Oregon",
+			"numJobSlots": 1000,
             "price": 0.01978300,
             "skuId": "E5F0-6A5D-7BAD",
             "buckets":
@@ -202,6 +217,7 @@
             "multiLocationIdx": 4,
             "name": "us-east1",
             "location": "South Carolina",
+			"numJobSlots": 500,
             "price": 0.01978300,
             "skuId": "E5F0-6A5D-7BAD",
             "buckets":
@@ -215,6 +231,7 @@
             "multiLocationIdx": 4,
             "name": "us-east4",
             "location": "Northern Virginia",
+			"numJobSlots": 500,
             "price": 0.02275045,
             "skuId": "5F7A-5173-CF5B",
             "buckets":

@@ -12,237 +12,230 @@
 
 namespace gcp
 {
-	CBucket::CBucket(std::string&& name, CRegion* region)
-		: CStorageElement(std::move(name), region)
-	{
-		mBucketEvents.reserve(32768);
-	}
+    CBucket::CBucket(std::string&& name, CRegion* region)
+        : CStorageElement(std::move(name), region),
+          mRegion(region)
+    {}
 
-	void CBucket::OnIncreaseReplica(std::uint64_t amount, TickType now)
-	{
-		mBucketEvents.emplace_back(now, amount);
-		CStorageElement::OnIncreaseReplica(amount, now);
-	}
+    void CBucket::OnIncreaseReplica(std::uint64_t amount, TickType now)
+    {
+        if (now > mTimeLastCostUpdate)
+        {
+            mCosts += BYTES_TO_GiB(mUsedStorage) * mRegion->GetStoragePrice() * SECONDS_TO_MONTHS((now - mTimeLastCostUpdate));
+            mTimeLastCostUpdate = now;
+        }
+        CStorageElement::OnIncreaseReplica(amount, now);
+    }
 
-	void CBucket::OnRemoveReplica(const SReplica* replica, TickType now)
-	{
-		mBucketEvents.emplace_back(now, -(static_cast<std::int64_t>(replica->GetCurSize())));
-		CStorageElement::OnRemoveReplica(replica, now);
-	}
+    void CBucket::OnRemoveReplica(const SReplica* replica, TickType now)
+    {
+        if (now > mTimeLastCostUpdate)
+        {
+            mCosts += BYTES_TO_GiB(mUsedStorage) * mRegion->GetStoragePrice() * SECONDS_TO_MONTHS((now - mTimeLastCostUpdate));
+            mTimeLastCostUpdate = now;
+        }
+        CStorageElement::OnRemoveReplica(replica, now);
+    }
 
-	double CBucket::CalculateStorageCosts(TickType now)
-	{
-		const CRegion* const region = dynamic_cast<CRegion*>(mSite);
-		assert(region);
-		const double price = region->GetStoragePrice();
-		double costs = 0;
-        TickType timeOffset = mTimeAtLastReset;
-        TickType usedStorageAtGivenTime = mStorageAtLastReset;
-		mBucketEvents.emplace_back(now, 0);
-		for (const std::pair<TickType, std::int64_t>& storageEvent : mBucketEvents)
-		{
-			assert(storageEvent.first >= timeOffset);
-			const double timeDiff = storageEvent.first - timeOffset;
-			if (timeDiff > 0)
-			{
-				const double storageGiB = BYTES_TO_GiB(usedStorageAtGivenTime);
-				const double costsOfTimeDiff = storageGiB * price * SECONDS_TO_MONTHS(timeDiff);
-				costs += costsOfTimeDiff;
-				timeOffset = storageEvent.first;
-			}
-			usedStorageAtGivenTime += storageEvent.second;
-		}
-		assert(usedStorageAtGivenTime == mUsedStorage);
-		mTimeAtLastReset = now;
-		mStorageAtLastReset = mUsedStorage;
-		mBucketEvents.clear();
-		return costs;
-	}
+    double CBucket::CalculateStorageCosts(TickType now)
+    {
+        if (now > mTimeLastCostUpdate)
+        {
+            mCosts += BYTES_TO_GiB(mUsedStorage) * mRegion->GetStoragePrice() * SECONDS_TO_MONTHS((now - mTimeLastCostUpdate));
+            mTimeLastCostUpdate = now;
+        }
+        
+        double costs = mCosts;
+        mCosts = 0;
+        return costs;
+    }
 
 
 
-	static double CalculateNetworkCostsRecursive(std::uint64_t traffic, CLinkSelector::PriceInfoType::const_iterator curLevelIt, const CLinkSelector::PriceInfoType::const_iterator &endIt, std::uint64_t prevThreshold = 0)
-	{
-		assert(curLevelIt->first >= prevThreshold);
-		const std::uint64_t threshold = curLevelIt->first - prevThreshold;
-		CLinkSelector::PriceInfoType::const_iterator nextLevelIt = curLevelIt + 1;
-		if (traffic <= threshold || nextLevelIt == endIt)
-			return BYTES_TO_GiB(traffic) * curLevelIt->second;
-		const double lowerLevelCosts = CalculateNetworkCostsRecursive(traffic - threshold, nextLevelIt, endIt, curLevelIt->first);
-		return (BYTES_TO_GiB(threshold) * curLevelIt->second) + lowerLevelCosts;
-	}
+    static double CalculateNetworkCostsRecursive(std::uint64_t traffic, CLinkSelector::PriceInfoType::const_iterator curLevelIt, const CLinkSelector::PriceInfoType::const_iterator &endIt, std::uint64_t prevThreshold = 0)
+    {
+	    assert(curLevelIt->first >= prevThreshold);
+	    const std::uint64_t threshold = curLevelIt->first - prevThreshold;
+	    CLinkSelector::PriceInfoType::const_iterator nextLevelIt = curLevelIt + 1;
+	    if (traffic <= threshold || nextLevelIt == endIt)
+		    return BYTES_TO_GiB(traffic) * curLevelIt->second;
+	    const double lowerLevelCosts = CalculateNetworkCostsRecursive(traffic - threshold, nextLevelIt, endIt, curLevelIt->first);
+	    return (BYTES_TO_GiB(threshold) * curLevelIt->second) + lowerLevelCosts;
+    }
 
-	CRegion::CRegion(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName, const double storagePrice, std::string&& skuId)
-		: ISite(multiLocationIdx, std::move(name), locationName),
-		mSKUId(std::move(skuId)),
-		mStoragePrice(storagePrice)
-	{}
+    CRegion::CRegion(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName, const std::uint32_t numJobSlots, const double storagePrice, std::string&& skuId)
+	    : ISite(multiLocationIdx, std::move(name), locationName),
+        mNumJobSlots(numJobSlots),
+	    mSKUId(std::move(skuId)),
+	    mStoragePrice(storagePrice)
+    {}
 
-	auto CRegion::CreateStorageElement(std::string&& name) -> CBucket*
-	{
-		CBucket* newBucket = new CBucket(std::move(name), this);
-		mStorageElements.emplace_back(newBucket);
-		return newBucket;
-	}
+    auto CRegion::CreateStorageElement(std::string&& name) -> CBucket*
+    {
+	    CBucket* newBucket = new CBucket(std::move(name), this);
+	    mStorageElements.emplace_back(newBucket);
+	    return newBucket;
+    }
 
-	double CRegion::CalculateStorageCosts(TickType now)
-	{
-		double regionStorageCosts = 0;
-		for (const std::unique_ptr<CBucket>& bucket : mStorageElements)
-			regionStorageCosts += bucket->CalculateStorageCosts(now);
-		return regionStorageCosts;
-	}
+    double CRegion::CalculateStorageCosts(TickType now)
+    {
+	    double regionStorageCosts = 0;
+	    for (const std::unique_ptr<CBucket>& bucket : mStorageElements)
+		    regionStorageCosts += bucket->CalculateStorageCosts(now);
+	    return regionStorageCosts;
+    }
 
-	double CRegion::CalculateNetworkCosts(double& sumUsedTraffic, std::uint64_t& sumDoneTransfers)
-	{
-		double regionNetworkCosts = 0;
-		for (const std::unique_ptr<CLinkSelector>& linkSelector : mLinkSelectors)
-		{
+    double CRegion::CalculateNetworkCosts(double& sumUsedTraffic, std::uint64_t& sumDoneTransfers)
+    {
+	    double regionNetworkCosts = 0;
+	    for (const std::unique_ptr<CLinkSelector>& linkSelector : mLinkSelectors)
+	    {
             double costs = CalculateNetworkCostsRecursive(linkSelector->mUsedTraffic, linkSelector->mNetworkPrice.cbegin(), linkSelector->mNetworkPrice.cend());
 
             regionNetworkCosts += costs;
-            sumUsedTraffic += (linkSelector->mUsedTraffic / ONE_GiB);
+            sumUsedTraffic += BYTES_TO_GiB(linkSelector->mUsedTraffic);
             sumDoneTransfers += linkSelector->mDoneTransfers;
-			linkSelector->mUsedTraffic = 0;
+		    linkSelector->mUsedTraffic = 0;
             linkSelector->mDoneTransfers = 0;
             linkSelector->mFailedTransfers = 0;
-		}
-		return regionNetworkCosts;
-	}
+	    }
+	    return regionNetworkCosts;
+    }
 
 
 
-	auto CCloud::CreateRegion(const std::uint32_t multiLocationIdx,
-                              std::string&& name,
-                              const std::string& locationName,
-                              const double storagePrice,
-                              std::string&& skuId) -> CRegion*
-	{
-		CRegion* newRegion = new CRegion(multiLocationIdx, std::move(name), locationName, storagePrice, std::move(skuId));
-		mRegions.emplace_back(newRegion);
-		return newRegion;
-	}
+    auto CCloud::CreateRegion(const std::uint32_t multiLocationIdx,
+                                std::string&& name,
+                                const std::string& locationName,
+                                const std::uint32_t numJobSlots,
+                                const double storagePrice,
+                                std::string&& skuId) -> CRegion*
+    {
+	    CRegion* newRegion = new CRegion(multiLocationIdx, std::move(name), locationName, numJobSlots, storagePrice, std::move(skuId));
+	    mRegions.emplace_back(newRegion);
+	    return newRegion;
+    }
 
-	auto CCloud::ProcessBilling(TickType now) -> std::pair<double, std::pair<double, double>>
-	{
-		double totalStorageCosts = 0;
-		double totalNetworkCosts = 0;
+    auto CCloud::ProcessBilling(TickType now) -> std::pair<double, std::pair<double, double>>
+    {
+	    double totalStorageCosts = 0;
+	    double totalNetworkCosts = 0;
         double sumUsedTraffic = 0;
         std::uint64_t sumDoneTransfer = 0;
-		for (const std::unique_ptr<ISite>& site : mRegions)
-		{
-			auto region = dynamic_cast<CRegion*>(site.get());
-			assert(region != nullptr);
-			const double regionStorageCosts = region->CalculateStorageCosts(now);
-			const double regionNetworkCosts = region->CalculateNetworkCosts(sumUsedTraffic, sumDoneTransfer);
-			totalStorageCosts += regionStorageCosts;
-			totalNetworkCosts += regionNetworkCosts;
-		}
+	    for (const std::unique_ptr<ISite>& site : mRegions)
+	    {
+		    auto region = dynamic_cast<CRegion*>(site.get());
+		    assert(region != nullptr);
+		    const double regionStorageCosts = region->CalculateStorageCosts(now);
+		    const double regionNetworkCosts = region->CalculateNetworkCosts(sumUsedTraffic, sumDoneTransfer);
+		    totalStorageCosts += regionStorageCosts;
+		    totalNetworkCosts += regionNetworkCosts;
+	    }
         return { totalStorageCosts, {totalNetworkCosts, sumUsedTraffic } };
-	}
+    }
 
-	void CCloud::SetupDefaultCloud()
-	{
-		//CreateRegion("us", "northamerica-northeast1", "Montreal", 0.02275045, "E466-8D73-08F4");
-		//CreateRegion("northamerica-northeast1', 'northamerica-northeast1', 'Montreal', 0.02275045, "E466-8D73-08F4")
+    void CCloud::SetupDefaultCloud()
+    {
+	    //CreateRegion("us", "northamerica-northeast1", "Montreal", 0.02275045, "E466-8D73-08F4");
+	    //CreateRegion("northamerica-northeast1', 'northamerica-northeast1', 'Montreal', 0.02275045, "E466-8D73-08F4")
 
-		/*
-		eu - apac EF0A-B3BA-32CA 0.1121580 0.1121580 0.1028115 0.0747720
-		na - apac 6B37-399C-BF69 0.0000000 0.1121580 0.1028115 0.0747720
-		na - eu   C7FF-4F9E-C0DB 0.0000000 0.1121580 0.1028115 0.0747720
+	    /*
+	    eu - apac EF0A-B3BA-32CA 0.1121580 0.1121580 0.1028115 0.0747720
+	    na - apac 6B37-399C-BF69 0.0000000 0.1121580 0.1028115 0.0747720
+	    na - eu   C7FF-4F9E-C0DB 0.0000000 0.1121580 0.1028115 0.0747720
 
-		au - apac CDD1-6B91-FDF8 0.1775835 0.1775835 0.1682370 0.1401975
-		au - eu   1E7D-CBB0-AF0C 0.1775835 0.1775835 0.1682370 0.1401975
-		au - na   27F0-D54C-619A 0.1775835 0.1775835 0.1682370 0.1401975
-		au - sa   7F66-C883-4D7D 0.1121580 0.1121580 0.1028115 0.0747720
-		apac - sa 1F9A-A9AC-FFC3 0.1121580 0.1121580 0.1028115 0.0747720
-		eu - sa   96EB-C6ED-FBDE 0.1121580 0.1121580 0.1028115 0.0747720
-		na - sa   BB86-91E8-5450 0.1121580 0.1121580 0.1028115 0.0747720
-		*/
+	    au - apac CDD1-6B91-FDF8 0.1775835 0.1775835 0.1682370 0.1401975
+	    au - eu   1E7D-CBB0-AF0C 0.1775835 0.1775835 0.1682370 0.1401975
+	    au - na   27F0-D54C-619A 0.1775835 0.1775835 0.1682370 0.1401975
+	    au - sa   7F66-C883-4D7D 0.1121580 0.1121580 0.1028115 0.0747720
+	    apac - sa 1F9A-A9AC-FFC3 0.1121580 0.1121580 0.1028115 0.0747720
+	    eu - sa   96EB-C6ED-FBDE 0.1121580 0.1121580 0.1028115 0.0747720
+	    na - sa   BB86-91E8-5450 0.1121580 0.1121580 0.1028115 0.0747720
+	    */
 
-		//download apac      1F8B-71B0-3D1B 0.0000000 0.1121580 0.1028115 0.0747720
-		//download australia 9B2D-2B7D-FA5C 0.1775835 0.1775835 0.1682370 0.1401975
-		//download china     4980-950B-BDA6 0.2149695 0.2149695 0.2056230 0.1869300
-		//download us emea   22EB-AAE8-FBCD 0.0000000 0.1121580 0.1028115 0.0747720
+	    //download apac      1F8B-71B0-3D1B 0.0000000 0.1121580 0.1028115 0.0747720
+	    //download australia 9B2D-2B7D-FA5C 0.1775835 0.1775835 0.1682370 0.1401975
+	    //download china     4980-950B-BDA6 0.2149695 0.2149695 0.2056230 0.1869300
+	    //download us emea   22EB-AAE8-FBCD 0.0000000 0.1121580 0.1028115 0.0747720
 
 
-		const CLinkSelector::PriceInfoType priceSameRegion = { {0,0} };
-		const CLinkSelector::PriceInfoType priceSameMulti = { {1,0.0093465} };
+	    const CLinkSelector::PriceInfoType priceSameRegion = { {0,0} };
+	    const CLinkSelector::PriceInfoType priceSameMulti = { {1,0.0093465} };
 
-		typedef std::unordered_map<std::uint32_t, CLinkSelector::PriceInfoType> InnerMapType;
-		typedef std::unordered_map<std::uint32_t, InnerMapType> OuterMapType;
+	    typedef std::unordered_map<std::uint32_t, CLinkSelector::PriceInfoType> InnerMapType;
+	    typedef std::unordered_map<std::uint32_t, InnerMapType> OuterMapType;
 
-		const OuterMapType priceWW
-		{
-			{ 0, {	{ 1, {{ 1024, 0.1775835 }, { 10240, 0.1682370 }, { 10240, 0.1401975 }}},
-					{ 2,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
-					{ 3,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
-					{ 4,{ {1, 0.0}, { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } }
-				 }
-			},
-			{ 1, {	{ 2,{ { 1024, 0.1775835 },{ 10240, 0.1682370 },{ 10240, 0.1401975 } } },
-					{ 3,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
-					{ 4,{ { 1024, 0.1775835 },{ 10240, 0.1682370 },{ 10240, 0.1401975 } } }
-				 }
-			},
-			{ 2, {	{ 3,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
-					{ 4,{ { 1, 0.0 },{ 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } }
-				 }
-			},
-			{ 3, { { 4,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } } } }
-		};
+	    const OuterMapType priceWW
+	    {
+		    { 0, {	{ 1, {{ 1024, 0.1775835 }, { 10240, 0.1682370 }, { 10240, 0.1401975 }}},
+				    { 2,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
+				    { 3,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
+				    { 4,{ {1, 0.0}, { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } }
+				    }
+		    },
+		    { 1, {	{ 2,{ { 1024, 0.1775835 },{ 10240, 0.1682370 },{ 10240, 0.1401975 } } },
+				    { 3,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
+				    { 4,{ { 1024, 0.1775835 },{ 10240, 0.1682370 },{ 10240, 0.1401975 } } }
+				    }
+		    },
+		    { 2, {	{ 3,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
+				    { 4,{ { 1, 0.0 },{ 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } }
+				    }
+		    },
+		    { 3, { { 4,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } } } }
+	    };
 
-		for (const std::unique_ptr<ISite>& srcSite : mRegions)
-		{
-			auto srcRegion = dynamic_cast<CRegion*>(srcSite.get());
-			assert(srcRegion != nullptr);
-			const std::uint32_t srcRegionMultiLocationIdx = srcRegion->GetMultiLocationIdx();
-			for (const std::unique_ptr<ISite>& dstSite : mRegions)
-			{
-				auto dstRegion = dynamic_cast<CRegion*>(dstSite.get());
-				assert(dstRegion != nullptr);
-				const std::uint32_t dstRegionMultiLocationIdx = dstRegion->GetMultiLocationIdx();
-				const bool isSameLocation = (*srcRegion) == (*dstRegion);
-				if (!isSameLocation && (srcRegionMultiLocationIdx != dstRegionMultiLocationIdx))
-				{
-					OuterMapType::const_iterator outerIt = priceWW.find(srcRegionMultiLocationIdx);
-					InnerMapType::const_iterator innerIt;
-					if(outerIt != priceWW.cend())
-					{
-						//found the srcRegion idx in the outer map
-						//lets see if we find the dstRegion idx in the inner map
-						innerIt = outerIt->second.find(dstRegionMultiLocationIdx);
-						if(innerIt == outerIt->second.cend())
-							outerIt = priceWW.cend(); //Nope. Reset outerIt and try with swapped order
-					}
-					if(outerIt == priceWW.cend())
-					{
-						outerIt = priceWW.find(dstRegionMultiLocationIdx);
-						assert(outerIt != priceWW.cend());
-						innerIt = outerIt->second.find(srcRegionMultiLocationIdx);
-					}
+	    for (const std::unique_ptr<ISite>& srcSite : mRegions)
+	    {
+		    auto srcRegion = dynamic_cast<CRegion*>(srcSite.get());
+		    assert(srcRegion != nullptr);
+		    const std::uint32_t srcRegionMultiLocationIdx = srcRegion->GetMultiLocationIdx();
+		    for (const std::unique_ptr<ISite>& dstSite : mRegions)
+		    {
+			    auto dstRegion = dynamic_cast<CRegion*>(dstSite.get());
+			    assert(dstRegion != nullptr);
+			    const std::uint32_t dstRegionMultiLocationIdx = dstRegion->GetMultiLocationIdx();
+			    const bool isSameLocation = (*srcRegion) == (*dstRegion);
+			    if (!isSameLocation && (srcRegionMultiLocationIdx != dstRegionMultiLocationIdx))
+			    {
+				    OuterMapType::const_iterator outerIt = priceWW.find(srcRegionMultiLocationIdx);
+				    InnerMapType::const_iterator innerIt;
+				    if(outerIt != priceWW.cend())
+				    {
+					    //found the srcRegion idx in the outer map
+					    //lets see if we find the dstRegion idx in the inner map
+					    innerIt = outerIt->second.find(dstRegionMultiLocationIdx);
+					    if(innerIt == outerIt->second.cend())
+						    outerIt = priceWW.cend(); //Nope. Reset outerIt and try with swapped order
+				    }
+				    if(outerIt == priceWW.cend())
+				    {
+					    outerIt = priceWW.find(dstRegionMultiLocationIdx);
+					    assert(outerIt != priceWW.cend());
+					    innerIt = outerIt->second.find(srcRegionMultiLocationIdx);
+				    }
 
-					assert(innerIt != outerIt->second.cend());
-					CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/64);
-					linkSelector->mNetworkPrice = innerIt->second;
-				}
-				else if (isSameLocation)
-				{
-					// 2. case: r1 and r2 are the same region
-					//linkselector.network_price_chf = priceSameRegion
-					CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/8);
-					linkSelector->mNetworkPrice = priceSameRegion;
-				}
-				else
-				{
-					// 3. case: region r1 is inside the multi region r2
-					//linkselector.network_price_chf = priceSameMulti
-					CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/32);
-					linkSelector->mNetworkPrice = priceSameMulti;
-				}
-			}
-		}
-	}
+				    assert(innerIt != outerIt->second.cend());
+				    CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/64);
+				    linkSelector->mNetworkPrice = innerIt->second;
+			    }
+			    else if (isSameLocation)
+			    {
+				    // 2. case: r1 and r2 are the same region
+				    //linkselector.network_price_chf = priceSameRegion
+				    CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/8);
+				    linkSelector->mNetworkPrice = priceSameRegion;
+			    }
+			    else
+			    {
+				    // 3. case: region r1 is inside the multi region r2
+				    //linkselector.network_price_chf = priceSameMulti
+				    CLinkSelector* linkSelector = srcRegion->CreateLinkSelector(dstRegion, ONE_GiB/32);
+				    linkSelector->mNetworkPrice = priceSameMulti;
+			    }
+		    }
+	    }
+    }
 
     bool CCloud::TryConsumeConfig(const nlohmann::json& json)
     {
@@ -258,6 +251,7 @@ namespace gcp
                     std::unique_ptr<std::uint32_t> multiLocationIdx;
                     std::string regionName, regionLocation, skuId;
                     double price = 0;
+                    std::uint32_t numJobSlots = 0;
                     nlohmann::json bucketsJson;
                     for(const auto& [regionJsonKey, regionJsonValue] : regionJson.items())
                     {
@@ -267,6 +261,8 @@ namespace gcp
                             regionName = regionJsonValue.get<std::string>();
                         else if(regionJsonKey == "location")
                             regionLocation = regionJsonValue.get<std::string>();
+                        else if (regionJsonKey == "numJobSlots")
+                            numJobSlots = regionJsonValue.get<std::uint32_t>();
                         else if(regionJsonKey == "buckets")
                             bucketsJson = regionJsonValue;
                         else if(regionJsonKey == "price")
@@ -296,7 +292,7 @@ namespace gcp
                     }
 
                     std::cout << "Adding region " << regionName << " in " << regionLocation << std::endl;
-            		CRegion *region = CreateRegion(*multiLocationIdx, std::move(regionName), regionLocation, price, std::move(skuId));
+            	    CRegion *region = CreateRegion(*multiLocationIdx, std::move(regionName), regionLocation, numJobSlots, price, std::move(skuId));
 
                     if (bucketsJson.empty())
                     {
