@@ -6,6 +6,7 @@
 #include "CAdvancedSim.hpp"
 #include "CCloudGCP.hpp"
 #include "CConfigLoader.hpp"
+#include "CLinkSelector.hpp"
 #include "CRucio.hpp"
 #include "COutput.hpp"
 #include "CommonScheduleables.hpp"
@@ -19,10 +20,10 @@ void CAdvancedSim::SetupDefaults()
     ////////////////////////////
     // init output db
     ////////////////////////////
-    std::stringstream columns;
+    std::stringstream dbIn;
     bool ok = false;
 
-    ok = output.CreateTable("Sites", "id BIGINT PRIMARY KEY, name varchar(64), locationName varchar(64)");
+    ok = output.CreateTable("Sites", "id BIGINT PRIMARY KEY, name varchar(64), locationName varchar(32), cloudName varchar(32)");
     assert(ok);
 
     ok = output.CreateTable("StorageElements", "id BIGINT PRIMARY KEY, siteId BIGINT, name varchar(64), FOREIGN KEY(siteId) REFERENCES Sites(id)");
@@ -34,26 +35,26 @@ void CAdvancedSim::SetupDefaults()
     ok = output.CreateTable("Files", "id BIGINT PRIMARY KEY, createdAt BIGINT, expiredAt BIGINT, filesize INTEGER");
     assert(ok);
 
-    columns.str(std::string());
-    columns << "id BIGINT PRIMARY KEY,"
-            << "fileId BIGINT,"
-            << "storageElementId BIGINT,"
-            << "createdAt BIGINT,"
-            << "expiredAt BIGINT,"
-            << "FOREIGN KEY(fileId) REFERENCES Files(id),"
-            << "FOREIGN KEY(storageElementId) REFERENCES StorageElements(id)";
-    ok = output.CreateTable("Replicas", columns.str());
+    dbIn.str(std::string());
+    dbIn << "id BIGINT PRIMARY KEY,"
+         << "fileId BIGINT,"
+         << "storageElementId BIGINT,"
+         << "createdAt BIGINT,"
+         << "expiredAt BIGINT,"
+         << "FOREIGN KEY(fileId) REFERENCES Files(id),"
+         << "FOREIGN KEY(storageElementId) REFERENCES StorageElements(id)";
+    ok = output.CreateTable("Replicas", dbIn.str());
     assert(ok);
 
-    columns.str(std::string());
-    columns << "id BIGINT PRIMARY KEY,"
-            << "srcReplicaId BIGINT,"
-            << "dstReplicaId BIGINT,"
-            << "startTick BIGINT,"
-            << "endTick BIGINT,"
-            << "FOREIGN KEY(srcReplicaId) REFERENCES Replicas(id),"
-            << "FOREIGN KEY(dstReplicaId) REFERENCES Replicas(id)";
-    ok = output.CreateTable("Transfers", columns.str());
+    dbIn.str(std::string());
+    dbIn << "id BIGINT PRIMARY KEY,"
+         << "srcReplicaId BIGINT,"
+         << "dstReplicaId BIGINT,"
+         << "startTick BIGINT,"
+         << "endTick BIGINT,"
+         << "FOREIGN KEY(srcReplicaId) REFERENCES Replicas(id),"
+         << "FOREIGN KEY(dstReplicaId) REFERENCES Replicas(id)";
+    ok = output.CreateTable("Transfers", dbIn.str());
     assert(ok);
 
     CStorageElement::mOutputQueryIdx = output.AddPreparedSQLStatement("INSERT INTO Replicas VALUES(?, ?, ?, ?, ?);");
@@ -71,20 +72,69 @@ void CAdvancedSim::SetupDefaults()
 
     config.TryLoadConfig(std::filesystem::current_path() / "config" / "default.json");
 
+    //add all grid sites and storage elements to output DB (before links)
+    for(const std::unique_ptr<CGridSite>& gridSite : mRucio->mGridSites)
+    {
+        dbIn.str(std::string());
+        dbIn << gridSite->GetId() << ","
+             << "'" << gridSite->GetName() << "',"
+             << "'" << gridSite->GetLocationName() << "',"
+             << "'grid'";
+        ok = ok && output.InsertRow("Sites", dbIn.str());
+
+        for(const std::unique_ptr<CStorageElement>& storageElement : gridSite->mStorageElements)
+        {
+            dbIn.str(std::string());
+            dbIn << storageElement->GetId() << ","
+                 << gridSite->GetId() << ","
+                 << "'" << storageElement->GetName() << "'";
+            ok = ok && output.InsertRow("StorageElements", dbIn.str());
+        }
+    }
+
+    //add all cloud regions and buckets to output DB and then create and add all links
     for(const std::unique_ptr<IBaseCloud>& cloud : mClouds)
     {
         cloud->SetupDefaultCloud();
-        for(const std::unique_ptr<CGridSite>& gridSite : mRucio->mGridSites)
+        for(const std::unique_ptr<ISite>& cloudSite : cloud->mRegions)
         {
-            for(const std::unique_ptr<ISite>& cloudSite : cloud->mRegions)
+            auto region = dynamic_cast<gcp::CRegion*>(cloudSite.get());
+            dbIn.str(std::string());
+            dbIn << region->GetId() << ","
+                 << "'" << region->GetName() << "',"
+                 << "'" << region->GetLocationName() << "',"
+                 << "'" << cloud->GetName() << "'";
+            ok = ok && output.InsertRow("Sites", dbIn.str());
+
+            for(const std::unique_ptr<gcp::CBucket>& bucket : region->mStorageElements)
             {
-                auto region = dynamic_cast<gcp::CRegion*>(cloudSite.get());
-                gridSite->CreateLinkSelector(region, ONE_GiB / 32);
-                region->CreateLinkSelector(gridSite.get(), ONE_GiB / 128);
+                dbIn.str(std::string());
+                dbIn << bucket->GetId() << ","
+                     << region->GetId() << ","
+                     << "'" << bucket->GetName() << "'";
+                ok = ok && output.InsertRow("StorageElements", dbIn.str());
+            }
+
+            for(const std::unique_ptr<CGridSite>& gridSite : mRucio->mGridSites)
+            {
+                CLinkSelector* link = gridSite->CreateLinkSelector(region, ONE_GiB / 32);
+                dbIn.str(std::string());
+                dbIn << link->GetId() << ","
+                     << link->GetSrcSiteId() << ","
+                     << link->GetDstSiteId();
+                ok = ok && output.InsertRow("LinkSelectors", dbIn.str());
+
+                link = region->CreateLinkSelector(gridSite.get(), ONE_GiB / 128);
+                dbIn.str(std::string());
+                dbIn << link->GetId() << ","
+                     << link->GetSrcSiteId() << ","
+                     << link->GetDstSiteId();
+                ok = ok && output.InsertRow("LinkSelectors", dbIn.str());
             }
         }
     }
 
+    assert(ok);
 
     ////////////////////////////
     // setup scheuleables

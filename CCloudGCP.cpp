@@ -44,7 +44,7 @@ namespace gcp
             mCosts += BYTES_TO_GiB(mUsedStorage) * mRegion->GetStoragePrice() * SECONDS_TO_MONTHS((now - mTimeLastCostUpdate));
             mTimeLastCostUpdate = now;
         }
-        
+
         double costs = mCosts;
         mCosts = 0;
         return costs;
@@ -63,8 +63,8 @@ namespace gcp
 	    return (BYTES_TO_GiB(threshold) * curLevelIt->second) + lowerLevelCosts;
     }
 
-    CRegion::CRegion(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName, const std::uint32_t numJobSlots, const double storagePrice, std::string&& skuId)
-	    : ISite(multiLocationIdx, std::move(name), locationName),
+    CRegion::CRegion(const std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, const std::uint32_t numJobSlots, const double storagePrice, std::string&& skuId)
+	    : ISite(multiLocationIdx, std::move(name), std::move(locationName)),
         mNumJobSlots(numJobSlots),
 	    mSKUId(std::move(skuId)),
 	    mStoragePrice(storagePrice)
@@ -106,12 +106,12 @@ namespace gcp
 
     auto CCloud::CreateRegion(const std::uint32_t multiLocationIdx,
                                 std::string&& name,
-                                const std::string& locationName,
+                                std::string&& locationName,
                                 const std::uint32_t numJobSlots,
                                 const double storagePrice,
                                 std::string&& skuId) -> CRegion*
     {
-	    CRegion* newRegion = new CRegion(multiLocationIdx, std::move(name), locationName, numJobSlots, storagePrice, std::move(skuId));
+	    CRegion* newRegion = new CRegion(multiLocationIdx, std::move(name), std::move(locationName), numJobSlots, storagePrice, std::move(skuId));
 	    mRegions.emplace_back(newRegion);
 	    return newRegion;
     }
@@ -292,7 +292,7 @@ namespace gcp
                     }
 
                     std::cout << "Adding region " << regionName << " in " << regionLocation << std::endl;
-            	    CRegion *region = CreateRegion(*multiLocationIdx, std::move(regionName), regionLocation, numJobSlots, price, std::move(skuId));
+            	    CRegion *region = CreateRegion(*multiLocationIdx, std::move(regionName), std::move(regionLocation), numJobSlots, price, std::move(skuId));
 
                     if (bucketsJson.empty())
                     {

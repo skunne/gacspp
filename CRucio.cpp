@@ -10,8 +10,8 @@
 
 
 
-CGridSite::CGridSite(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName)
-	: ISite(multiLocationIdx, std::move(name), locationName)
+CGridSite::CGridSite(const std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName)
+	: ISite(multiLocationIdx, std::move(name), std::move(locationName))
 {
 	mStorageElements.reserve(8);
 }
@@ -38,9 +38,9 @@ auto CRucio::CreateFile(const std::uint32_t size, const TickType expiresAt) -> S
     mFiles.emplace_back(newFile);
     return newFile;
 }
-auto CRucio::CreateGridSite(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName) -> CGridSite*
+auto CRucio::CreateGridSite(const std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName) -> CGridSite*
 {
-    CGridSite* newSite = new CGridSite(multiLocationIdx, std::move(name), locationName);
+    CGridSite* newSite = new CGridSite(multiLocationIdx, std::move(name), std::move(locationName));
     mGridSites.emplace_back(newSite);
     return newSite;
 }
@@ -135,7 +135,7 @@ bool CRucio::TryConsumeConfig(const json& json)
                 }
 
                 std::cout << "Adding site " << siteName << " in " << siteLocation << std::endl;
-                CGridSite *site = CreateGridSite(*multiLocationIdx, std::move(siteName), siteLocation);
+                CGridSite *site = CreateGridSite(*multiLocationIdx, std::move(siteName), std::move(siteLocation));
 
                 if (storageElementsJson.empty())
                 {

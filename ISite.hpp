@@ -24,13 +24,14 @@ private:
 	IdType mId;
     std::uint32_t mMultiLocationIdx;
     std::string mName;
+    std::string mLocationName;
 
 protected:
 	std::unordered_map<IdType, std::size_t> mDstSiteIdToLinkSelectorIdx;
 
 public:
     std::vector<std::unique_ptr<CLinkSelector>> mLinkSelectors;
-	ISite(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName);
+	ISite(const std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName);
 	virtual ~ISite();
 
 	ISite(ISite&&) = default;
@@ -55,4 +56,6 @@ public:
 	{return mMultiLocationIdx;}
     inline auto GetName() const -> const std::string&
     {return mName;}
+    inline auto GetLocationName() const -> const std::string&
+    {return mLocationName;}
 };

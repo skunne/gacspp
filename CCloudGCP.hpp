@@ -38,7 +38,7 @@ namespace gcp
         std::uint32_t mNumJobSlots = 0;
 		std::vector<std::unique_ptr<CBucket>> mStorageElements;
 
-		CRegion(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName, const std::uint32_t numJobSlots, const double storagePrice, std::string&& skuId);
+		CRegion(const std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, const std::uint32_t numJobSlots, const double storagePrice, std::string&& skuId);
 
 		auto CreateStorageElement(std::string&& name) -> CBucket* final;
 		double CalculateStorageCosts(TickType now);
@@ -55,7 +55,7 @@ namespace gcp
 
 		auto CreateRegion(const std::uint32_t multiLocationIdx,
                           std::string&& name,
-                          const std::string& locationName,
+                          std::string&& locationName,
                           const std::uint32_t numJobSlots,
                           const double storagePrice,
                           std::string&& skuId) -> CRegion* final;

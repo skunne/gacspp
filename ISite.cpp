@@ -2,21 +2,17 @@
 
 #include "ISite.hpp"
 
-#include "COutput.hpp"
 #include "CLinkSelector.hpp"
 #include "CStorageElement.hpp"
 
 
 
-ISite::ISite(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName)
+ISite::ISite(const std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName)
 	: mId(GetNewId()),
       mMultiLocationIdx(multiLocationIdx),
-      mName(std::move(name))
-{
-    std::string row = std::to_string(mId) + ",'" + mName + "','" + locationName + "'";
-    bool ok = COutput::GetRef().InsertRow("Sites", row);
-    assert(ok);
-}
+      mName(std::move(name)),
+      mLocationName(std::move(locationName))
+{}
 
 ISite::~ISite() = default;
 

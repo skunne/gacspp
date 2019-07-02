@@ -18,7 +18,7 @@ class CGridSite : public ISite
 public:
 	std::vector<std::unique_ptr<CStorageElement>> mStorageElements;
 
-	CGridSite(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName);
+	CGridSite(const std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName);
 	CGridSite(CGridSite&&) = default;
 	CGridSite& operator=(CGridSite&&) = default;
 
@@ -38,7 +38,7 @@ public:
     ~CRucio();
 
     auto CreateFile(const std::uint32_t size, const TickType expiresAt) -> SFile*;
-    auto CreateGridSite(const std::uint32_t multiLocationIdx, std::string&& name, const std::string& locationName) -> CGridSite*;
+    auto CreateGridSite(const std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName) -> CGridSite*;
     auto RunReaper(const TickType now) -> std::size_t;
 
     bool TryConsumeConfig(const nlohmann::json& json) final;
