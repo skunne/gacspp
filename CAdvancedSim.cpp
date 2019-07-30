@@ -95,7 +95,6 @@ void CAdvancedSim::SetupDefaults()
     //add all cloud regions and buckets to output DB and then create and add all links
     for(const std::unique_ptr<IBaseCloud>& cloud : mClouds)
     {
-        cloud->SetupDefaultCloud();
         for(const std::unique_ptr<ISite>& cloudSite : cloud->mRegions)
         {
             auto region = dynamic_cast<gcp::CRegion*>(cloudSite.get());
@@ -133,6 +132,9 @@ void CAdvancedSim::SetupDefaults()
             }
         }
     }
+
+    for(const std::unique_ptr<IBaseCloud>& cloud : mClouds)
+        cloud->SetupDefaultCloud();
 
     assert(ok);
 

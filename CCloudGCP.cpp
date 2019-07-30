@@ -29,12 +29,13 @@ namespace gcp
 
     void CBucket::OnRemoveReplica(const SReplica* replica, TickType now)
     {
+        std::unique_lock<std::mutex> lock(mReplicaRemoveMutex);
         if (now > mTimeLastCostUpdate)
         {
             mCosts += BYTES_TO_GiB(mUsedStorage) * mRegion->GetStoragePrice() * SECONDS_TO_MONTHS((now - mTimeLastCostUpdate));
             mTimeLastCostUpdate = now;
         }
-        CStorageElement::OnRemoveReplica(replica, now);
+        CStorageElement::OnRemoveReplica(replica, now, false);
     }
 
     double CBucket::CalculateStorageCosts(TickType now)
@@ -65,9 +66,9 @@ namespace gcp
 
     CRegion::CRegion(const std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, const std::uint32_t numJobSlots, const double storagePrice, std::string&& skuId)
 	    : ISite(multiLocationIdx, std::move(name), std::move(locationName)),
-        mNumJobSlots(numJobSlots),
-	    mSKUId(std::move(skuId)),
-	    mStoragePrice(storagePrice)
+	      mSKUId(std::move(skuId)),
+	      mStoragePrice(storagePrice),
+          mNumJobSlots(numJobSlots)
     {}
 
     auto CRegion::CreateStorageElement(std::string&& name) -> CBucket*
@@ -167,29 +168,62 @@ namespace gcp
 
 	    const OuterMapType priceWW
 	    {
-		    { 0, {	{ 1, {{ 1024, 0.1775835 }, { 10240, 0.1682370 }, { 10240, 0.1401975 }}},
+		    { 0, {	{ 0, priceSameMulti },
+                    { 1,{ { 1024, 0.1775835 }, { 10240, 0.1682370 }, { 10240, 0.1401975 } } },
 				    { 2,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
 				    { 3,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
 				    { 4,{ {1, 0.0}, { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } }
-				    }
+				 }
 		    },
-		    { 1, {	{ 2,{ { 1024, 0.1775835 },{ 10240, 0.1682370 },{ 10240, 0.1401975 } } },
+		    { 1, {	{ 1, priceSameMulti },
+                    { 2,{ { 1024, 0.1775835 },{ 10240, 0.1682370 },{ 10240, 0.1401975 } } },
 				    { 3,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
 				    { 4,{ { 1024, 0.1775835 },{ 10240, 0.1682370 },{ 10240, 0.1401975 } } }
-				    }
+				 }
 		    },
-		    { 2, {	{ 3,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
+		    { 2, {	{ 2, priceSameMulti },
+                    { 3,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } },
 				    { 4,{ { 1, 0.0 },{ 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } }
-				    }
+				 }
 		    },
-		    { 3, { { 4,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } } } }
+		    { 3, {  { 3, priceSameMulti },
+                    { 4,{ { 1024, 0.1121580 },{ 10240, 0.1028115 },{ 10240, 0.0747720 } } }
+                 }
+            },
+            { 4, {  { 4, priceSameMulti } } }
 	    };
 
 	    for (const std::unique_ptr<ISite>& srcSite : mRegions)
 	    {
 		    auto srcRegion = dynamic_cast<CRegion*>(srcSite.get());
 		    assert(srcRegion != nullptr);
+
 		    const std::uint32_t srcRegionMultiLocationIdx = srcRegion->GetMultiLocationIdx();
+
+            //first set prices for existing links (outgoing links)
+            for(std::unique_ptr<CLinkSelector> &linkSelector : srcRegion->mLinkSelectors)
+            {
+                OuterMapType::const_iterator outerIt = priceWW.find(srcRegionMultiLocationIdx);
+                InnerMapType::const_iterator innerIt;
+                if(outerIt != priceWW.cend())
+                {
+                    //found the srcRegion idx in the outer map
+                    //lets see if we find the dstRegion idx in the inner map
+                    innerIt = outerIt->second.find(linkSelector->GetDstSite()->GetMultiLocationIdx());
+                    if(innerIt == outerIt->second.cend())
+                        outerIt = priceWW.cend(); //Nope. Reset outerIt and try with swapped order
+                }
+                if(outerIt == priceWW.cend())
+                {
+                    outerIt = priceWW.find(linkSelector->GetDstSite()->GetMultiLocationIdx());
+                    assert(outerIt != priceWW.cend());
+                    innerIt = outerIt->second.find(srcRegionMultiLocationIdx);
+                }
+
+                assert(innerIt != outerIt->second.cend());
+                linkSelector->mNetworkPrice = innerIt->second;
+            }
+
 		    for (const std::unique_ptr<ISite>& dstSite : mRegions)
 		    {
 			    auto dstRegion = dynamic_cast<CRegion*>(dstSite.get());

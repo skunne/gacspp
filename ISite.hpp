@@ -20,17 +20,7 @@ class CStorageElement;
 
 class ISite
 {
-private:
-	IdType mId;
-    std::uint32_t mMultiLocationIdx;
-    std::string mName;
-    std::string mLocationName;
-
-protected:
-	std::unordered_map<IdType, std::size_t> mDstSiteIdToLinkSelectorIdx;
-
 public:
-    std::vector<std::unique_ptr<CLinkSelector>> mLinkSelectors;
 	ISite(const std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName);
 	virtual ~ISite();
 
@@ -45,7 +35,7 @@ public:
 	inline bool operator!=(const ISite& b) const
 	{return mId != b.mId;}
 
-	virtual auto CreateLinkSelector(const ISite* const dstSite, const std::uint32_t bandwidth) -> CLinkSelector*;
+	virtual auto CreateLinkSelector(ISite* const dstSite, const std::uint32_t bandwidth) -> CLinkSelector*;
     virtual auto CreateStorageElement(std::string&& name) -> CStorageElement* = 0;
 
 	auto GetLinkSelector(const ISite* const dstSite) -> CLinkSelector*;
@@ -58,4 +48,16 @@ public:
     {return mName;}
     inline auto GetLocationName() const -> const std::string&
     {return mLocationName;}
+
+    std::vector<std::unique_ptr<CLinkSelector>> mLinkSelectors;
+
+private:
+	IdType mId;
+    std::string mName;
+    std::string mLocationName;
+    std::uint32_t mMultiLocationIdx;
+    
+protected:
+	std::unordered_map<IdType, std::size_t> mDstSiteIdToLinkSelectorIdx;
+
 };

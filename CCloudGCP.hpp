@@ -14,9 +14,6 @@ namespace gcp
         CRegion* mRegion;
         TickType mTimeLastCostUpdate = 0;
         double mCosts = 0;
-		//TickType mTimeAtLastReset = 0;
-		//TickType mStorageAtLastReset = 0;
-		//std::vector<std::pair<TickType, std::int64_t>> mBucketEvents;
 
 	public:
 
@@ -30,13 +27,7 @@ namespace gcp
 
 	class CRegion : public ISite
 	{
-	private:
-		std::string mSKUId;
-		double mStoragePrice = 0;
-
 	public:
-        std::uint32_t mNumJobSlots = 0;
-		std::vector<std::unique_ptr<CBucket>> mStorageElements;
 
 		CRegion(const std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName, const std::uint32_t numJobSlots, const double storagePrice, std::string&& skuId);
 
@@ -46,6 +37,15 @@ namespace gcp
 
 		inline auto GetStoragePrice() const -> double
 		{return mStoragePrice;}
+
+        std::vector<std::unique_ptr<CBucket>> mStorageElements;
+
+    private:
+		std::string mSKUId;
+		double mStoragePrice = 0;
+
+    public:
+        std::uint32_t mNumJobSlots = 0;
 	};
 
 	class CCloud final : public IBaseCloud

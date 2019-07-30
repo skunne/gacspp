@@ -12,15 +12,6 @@ struct SReplica;
 
 struct SFile
 {
-private:
-    IdType mId;
-    std::uint32_t mSize;
-
-public:
-	std::vector<std::shared_ptr<SReplica>> mReplicas;
-
-    TickType mExpiresAt;
-
     SFile(const std::uint32_t size, const TickType expiresAt);
     SFile(SFile&&) = default;
     SFile& operator=(SFile&&) = default;
@@ -35,21 +26,17 @@ public:
     {return mId;}
     inline auto GetSize() const -> std::uint32_t
     {return mSize;}
+
+    std::vector<std::shared_ptr<SReplica>> mReplicas;
+    TickType mExpiresAt;
+
+private:
+    IdType mId;
+    std::uint32_t mSize;
 };
 
 struct SReplica
 {
-private:
-    IdType mId;
-    SFile* mFile;
-    CStorageElement* mStorageElement;
-    std::uint32_t mCurSize = 0;
-
-public:
-    std::size_t mIndexAtStorageElement;
-
-    TickType mExpiresAt;
-
     SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement);
 
     SReplica(SReplica&&) = default;
@@ -74,4 +61,14 @@ public:
     {return mStorageElement;}
     inline auto GetCurSize() const -> std::uint32_t
     {return mCurSize;}
+
+
+    std::size_t mIndexAtStorageElement;
+    TickType mExpiresAt;
+
+private:
+    IdType mId;
+    SFile* mFile;
+    CStorageElement* mStorageElement;
+    std::uint32_t mCurSize = 0;
 };

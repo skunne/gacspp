@@ -37,22 +37,25 @@ void CStorageElement::OnIncreaseReplica(const std::uint64_t amount, const TickTy
     mUsedStorage += amount;
 }
 
-void CStorageElement::OnRemoveReplica(const SReplica* const replica, const TickType now)
+void CStorageElement::OnRemoveReplica(const SReplica* const replica, const TickType now, bool needLock)
 {
     (void)now;
-    const auto FileIdIterator = mFileIds.find(replica->GetFile()->GetId());
-    const std::size_t idxToDelete = replica->mIndexAtStorageElement;
     const std::uint32_t curSize = replica->GetCurSize();
 
-    assert(FileIdIterator != mFileIds.cend());
+    std::unique_lock<std::mutex> lock(mReplicaRemoveMutex, std::defer_lock);
+    if(needLock)
+        lock.lock();
+
+    const std::size_t idxToDelete = replica->mIndexAtStorageElement;
+    auto& lastReplica = mReplicas.back();
+    auto ret = mFileIds.erase(replica->GetFile()->GetId());
+    assert(ret == 1);
     assert(idxToDelete < mReplicas.size());
     assert(curSize <= mUsedStorage);
 
-    auto& lastReplica = mReplicas.back();
-    std::size_t& idxLastReplica = lastReplica->mIndexAtStorageElement;
-
     mUsedStorage -= curSize;
-    mFileIds.erase(FileIdIterator);
+
+    std::size_t& idxLastReplica = lastReplica->mIndexAtStorageElement;
     if(idxToDelete != idxLastReplica)
     {
         idxLastReplica = idxToDelete;

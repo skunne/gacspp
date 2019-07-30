@@ -1,5 +1,6 @@
 //#include <algorithm>
 #include <iostream>
+#include <thread>
 
 #include "json.hpp"
 
@@ -48,16 +49,40 @@ auto CRucio::CreateGridSite(const std::uint32_t multiLocationIdx, std::string&& 
 auto CRucio::RunReaper(const TickType now) -> std::size_t
 {
     const std::size_t numFiles = mFiles.size();
+    constexpr std::size_t numThreads = 16;
 
-    if(numFiles == 0)
+    if(numFiles < numThreads)
         return 0;
+
+    std::unique_ptr<std::thread> threads[numThreads];
+
+    auto worker = [now, numThreads](std::size_t tIdx, std::vector<std::unique_ptr<SFile>>* files) {
+        const float numElementsPerThread = files->size() / static_cast<float>(numThreads);
+        const std::size_t lastIdx = numElementsPerThread * (tIdx + 1);
+        for(std::size_t i = numElementsPerThread * tIdx; i < lastIdx; ++i)
+        {
+            std::unique_ptr<SFile>& curFile = (*files)[i];
+            if(curFile->mExpiresAt <= now)
+            {
+                curFile->Remove(now);
+                curFile.reset(nullptr);
+            }
+            else
+                curFile->RemoveExpiredReplicas(now);
+        }
+    };
+
+    for (std::size_t i=0; i<numThreads; ++i)
+        threads[i].reset(new std::thread(worker, i, &mFiles));
+    for (std::size_t i=0; i<numThreads; ++i)
+        threads[i]->join();
+
 
     std::size_t frontIdx = 0;
     std::size_t backIdx = numFiles - 1;
 
-    while(backIdx > frontIdx && mFiles[backIdx]->mExpiresAt <= now)
+    while(backIdx > frontIdx && mFiles[backIdx] == nullptr)
     {
-        mFiles[backIdx]->Remove(now);
         mFiles.pop_back();
         --backIdx;
     }
@@ -65,25 +90,20 @@ auto CRucio::RunReaper(const TickType now) -> std::size_t
     for(;frontIdx < backIdx; ++frontIdx)
     {
         std::unique_ptr<SFile>& curFile = mFiles[frontIdx];
-        if(curFile->mExpiresAt <= now)
+        if(curFile == nullptr)
         {
             std::swap(curFile, mFiles[backIdx]);
             do
             {
-                mFiles[backIdx]->Remove(now);
                 mFiles.pop_back();
                 --backIdx;
-            } while(backIdx > frontIdx && mFiles[backIdx]->mExpiresAt <= now);
+            } while(backIdx > frontIdx && mFiles[backIdx] == nullptr);
         }
-        else
-            curFile->RemoveExpiredReplicas(now);
     }
 
-    if(backIdx == 0 && mFiles.back()->mExpiresAt <= now)
-    {
-        mFiles[backIdx]->Remove(now);
+    if(backIdx == 0 && mFiles.back() == nullptr)
         mFiles.pop_back();
-    }
+
     return numFiles - mFiles.size();
 }
 

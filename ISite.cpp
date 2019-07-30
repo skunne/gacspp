@@ -9,18 +9,18 @@
 
 ISite::ISite(const std::uint32_t multiLocationIdx, std::string&& name, std::string&& locationName)
 	: mId(GetNewId()),
-      mMultiLocationIdx(multiLocationIdx),
       mName(std::move(name)),
-      mLocationName(std::move(locationName))
+      mLocationName(std::move(locationName)),
+      mMultiLocationIdx(multiLocationIdx)
 {}
 
 ISite::~ISite() = default;
 
-auto ISite::CreateLinkSelector(const ISite* const dstSite, const std::uint32_t bandwidth) -> CLinkSelector*
+auto ISite::CreateLinkSelector(ISite* const dstSite, const std::uint32_t bandwidth) -> CLinkSelector*
 {
     auto result = mDstSiteIdToLinkSelectorIdx.insert({dstSite->mId, mLinkSelectors.size()});
     assert(result.second);
-    CLinkSelector* newLinkSelector = new CLinkSelector(bandwidth, mId, dstSite->mId);
+    CLinkSelector* newLinkSelector = new CLinkSelector(bandwidth, this, dstSite);
     mLinkSelectors.emplace_back(newLinkSelector);
     return newLinkSelector;
 }

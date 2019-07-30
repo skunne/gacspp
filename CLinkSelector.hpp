@@ -5,15 +5,15 @@
 
 #include "constants.h"
 
-
+class ISite;
 
 class CLinkSelector
 {
 private:
     //monitoring
     IdType mId;
-    IdType mSrcSiteId;
-    IdType mDstSiteId;
+    ISite* mSrcSite;
+    ISite* mDstSite;
 
 public:
     std::uint32_t mDoneTransfers = 0;
@@ -22,14 +22,14 @@ public:
 public:
 	typedef std::vector<std::pair<std::uint64_t, double>> PriceInfoType;
 
-	CLinkSelector(const std::uint32_t bandwidth, const IdType srcSiteId, const IdType dstSiteId);
+	CLinkSelector(const std::uint32_t bandwidth, ISite* srcSite, ISite* dstSite);
 
     inline auto GetId() const -> IdType
     {return mId;}
-    inline auto GetSrcSiteId() const -> IdType
-    {return mSrcSiteId;}
-    inline auto GetDstSiteId() const -> IdType
-    {return mDstSiteId;}
+    auto GetSrcSite() const -> ISite*;
+    auto GetDstSite() const -> ISite*;
+    auto GetSrcSiteId() const -> IdType;
+    auto GetDstSiteId() const -> IdType;
 
     inline auto GetWeight() const -> double
     { return mNetworkPrice.back().second; }

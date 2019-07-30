@@ -4,9 +4,10 @@
 
 
 SFile::SFile(const std::uint32_t size, const TickType expiresAt)
-    : mId(GetNewId()),
-      mSize(size),
-      mExpiresAt(expiresAt)
+    : mExpiresAt(expiresAt),
+      mId(GetNewId()),
+      mSize(size)
+
 {
     mReplicas.reserve(8);
 }
@@ -61,11 +62,11 @@ auto SFile::RemoveExpiredReplicas(const TickType now) -> std::size_t
 
 
 SReplica::SReplica(SFile* const file, CStorageElement* const storageElement, const std::size_t indexAtStorageElement)
-    : mId(GetNewId()),
+    : mIndexAtStorageElement(indexAtStorageElement),
+      mExpiresAt(file->mExpiresAt),
+      mId(GetNewId()),
       mFile(file),
-      mStorageElement(storageElement),
-      mIndexAtStorageElement(indexAtStorageElement),
-      mExpiresAt(file->mExpiresAt)
+      mStorageElement(storageElement)
 {}
 
 auto SReplica::Increase(std::uint32_t amount, const TickType now) -> std::uint32_t

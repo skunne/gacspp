@@ -8,7 +8,8 @@
 #include "COutput.hpp"
 #include "CSimpleSim.hpp"
 
-int main(int argc, char** argv)
+
+int main()
 {
     COutput& output = COutput::GetRef();
 
