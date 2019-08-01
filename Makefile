@@ -1,5 +1,5 @@
 POSTGREFLAGS=-lpq -I /Users/stephan/homebrew/Cellar/libpq/11.4/include/
-EXPFLAGS=-L/Users/stephan/homebrew/opt/llvm/lib -lc++experimental
+EXPFLAGS=-L/Users/stephan/homebrew/opt/llvm/lib -lstdc++fs -lc++experimental
 CC=g++-9
 CFLAGS=-O3 -march=native -std=c++17 -Wall -Wextra -pedantic
 LDFLAGS=-ldl -lpthread $(POSTGREFLAGS) $(EXPFLAGS)
@@ -11,7 +11,7 @@ NAME=gacspp
 all: $(SOURCES) $(NAME)
     
 $(NAME): $(OBJECTS) 
-	$(CC) $(LDFLAGS) $(OBJECTS) -o $@
+	$(CC) $(LDFLAGS) $(CFLAGS) sqlite3.o $(OBJECTS) -o $@
 
 %.o: %.cpp $(HEADERS)
 	$(CC) $(LDFLAGS) -c $(CFLAGS) $< -o $@
