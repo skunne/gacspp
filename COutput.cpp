@@ -4,6 +4,8 @@
 #include <iomanip>
 #include <sstream>
 
+#include <libpq-fe.h>       /* PostgreSQL */
+
 #include "constants.h"
 #include "COutput.hpp"
 #include "sqlite3.h"
@@ -172,7 +174,7 @@ COutput::~COutput()
     Shutdown();
 }
 
-bool COutput::Initialise(const std::filesystem::path& dbFilePath, bool keepInMemory)
+bool COutput::Initialise(const std::experimental::filesystem::path& dbFilePath, bool keepInMemory)
 {
     assert(mDB == nullptr);
 

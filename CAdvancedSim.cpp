@@ -70,7 +70,7 @@ void CAdvancedSim::SetupDefaults()
     for(std::unique_ptr<IBaseCloud>& cloud : mClouds)
         config.mConfigConsumer.push_back(cloud.get());
 
-    config.TryLoadConfig(std::filesystem::current_path() / "config" / "default.json");
+    config.TryLoadConfig(std::experimental::filesystem::current_path() / "config" / "default.json");
 
     //add all grid sites and storage elements to output DB (before links)
     for(const std::unique_ptr<CGridSite>& gridSite : mRucio->mGridSites)

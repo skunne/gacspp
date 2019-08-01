@@ -1,7 +1,7 @@
 #pragma once
 
 #include <atomic>
-#include <filesystem>
+#include <experimental/filesystem>
 #include <memory>
 #include <string>
 #include <thread>
@@ -61,7 +61,7 @@ private:
     sqlite3* mDB = nullptr;
     std::vector<sqlite3_stmt*> mPreparedStatements;
 
-    std::filesystem::path mDBFilePath;
+    std::experimental::filesystem::path mDBFilePath;
 
 public:
     COutput(const COutput&) = delete;
@@ -74,7 +74,7 @@ public:
     static auto GetRef() -> COutput&;
     static void LogCallback(void* data, int errorCode, const char* errorMessage);
 
-    bool Initialise(const std::filesystem::path& dbFilePath, bool keepInMemory);
+    bool Initialise(const std::experimental::filesystem::path& dbFilePath, bool keepInMemory);
     bool StartConsumer();
     void Shutdown();
 

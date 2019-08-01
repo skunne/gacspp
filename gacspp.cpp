@@ -15,7 +15,7 @@ int main()
 
     nlohmann::json configJson;
     {
-        const std::string configFilePath(std::filesystem::current_path() / "config" / "simconfig.json");
+        const std::string configFilePath(std::experimental::filesystem::current_path() / "config" / "simconfig.json");
         std::ifstream configFileStream(configFilePath);
         if(!configFileStream)
         {
@@ -27,8 +27,8 @@ int main()
 
     {
         bool keepInMemory = false;
-        std::filesystem::path outputBaseDirPath = std::filesystem::current_path() / "output" / "";
-        std::filesystem::create_directories(outputBaseDirPath);
+        std::experimental::filesystem::path outputBaseDirPath = std::experimental::filesystem::current_path() / "output" / "";
+        std::experimental::filesystem::create_directories(outputBaseDirPath);
 
 
         std::stringstream filenameTimePrefix;
@@ -61,7 +61,7 @@ int main()
                 outputFilename = prop->get<std::string>();
         }
 
-        std::filesystem::path outputFilePath;
+        std::experimental::filesystem::path outputFilePath;
         if(!outputFilename.empty())
         {
             keepInMemory = true;
