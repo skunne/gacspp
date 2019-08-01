@@ -34,6 +34,8 @@
 // limitations under the License.
 // ---------------------------------------------------------------------------
 
+#include <atomic>       /* added by Stephan */
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
