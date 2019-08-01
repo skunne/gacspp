@@ -174,6 +174,8 @@ COutput::~COutput()
     Shutdown();
 }
 
+/* sql initialise connection to db */
+/*
 bool COutput::Initialise(const std::experimental::filesystem::path& dbFilePath, bool keepInMemory)
 {
     assert(mDB == nullptr);
@@ -194,6 +196,15 @@ bool COutput::Initialise(const std::experimental::filesystem::path& dbFilePath, 
 
     return true;
 }
+*/
+
+/* postgre initialise connection to db */
+bool COutput::Initialise(void)
+{
+    this->postGreConnection = PQconnectdb("user=admin password=changeme host=dbod-skunne-testing.cern.ch port=6601");
+    return (this->postGreConnection != NULL);  /* Although the doc doesn't say anything about failure */
+    //return (true);
+}
 
 bool COutput::StartConsumer()
 {
@@ -206,6 +217,8 @@ bool COutput::StartConsumer()
     return true;
 }
 
+/* SQLite3 Shutdown connection */
+/*
 void COutput::Shutdown()
 {
     mIsConsumerRunning = false;
@@ -238,6 +251,13 @@ void COutput::Shutdown()
         sqlite3_close(mDB);
         mDB = nullptr;
     }
+}
+*/
+
+/* postgre Shutdown connection */
+void COutput::Shutdown(void)
+{
+    PQfinish(this->postGreConnection);
 }
 
 auto COutput::AddPreparedSQLStatement(const std::string& statementString) -> std::size_t

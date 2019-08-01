@@ -7,6 +7,8 @@
 #include <thread>
 #include <vector>
 
+#include <libpq-fe.h>   /* postgreSQL api */
+
 #define OUTPUT_BUF_SIZE 8192
 
 struct sqlite3;
@@ -63,6 +65,8 @@ private:
 
     std::experimental::filesystem::path mDBFilePath;
 
+    PGconn *postGreConnection;
+
 public:
     COutput(const COutput&) = delete;
     COutput& operator=(const COutput&) = delete;
@@ -74,7 +78,7 @@ public:
     static auto GetRef() -> COutput&;
     static void LogCallback(void* data, int errorCode, const char* errorMessage);
 
-    bool Initialise(const std::experimental::filesystem::path& dbFilePath, bool keepInMemory);
+    bool Initialise();
     bool StartConsumer();
     void Shutdown();
 
