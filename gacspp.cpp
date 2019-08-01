@@ -73,7 +73,7 @@ int main()
         if(!outputFilePath.empty())
             std::cout<<"Output file: "<<outputFilePath<<std::endl;
 
-        if(!output.Initialise(outputFilePath, keepInMemory))
+        if(!output.Initialise())
         {
             std::cout << "Failed initialising output component" << std::endl;
             return 1;
