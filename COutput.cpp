@@ -331,6 +331,15 @@ void COutput::ConsumerThread()
             const std::size_t sqlStmtIdx = mStatementsBuffer[mConsumerIdx]->GetPreparedStatementIdx();
             sqlite3_stmt* sqlStmt = mPreparedStatements[sqlStmtIdx];
             numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(sqlStmt);
+            /*
+            ** PGresult *PQexecPrepared(PGconn *conn,
+            **                          const char *stmtName,
+            **                          int nParams,
+            **                          const char * const *paramValues,
+            **                          const int *paramLengths,
+            **                          const int *paramFormats,
+            **                          int resultFormat);
+            */
 
             mStatementsBuffer[mConsumerIdx] = nullptr;
             mConsumerIdx = (mConsumerIdx + 1) % OUTPUT_BUF_SIZE;
