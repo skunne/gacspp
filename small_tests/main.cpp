@@ -1,11 +1,8 @@
 #include <iostream>
-#include <curses.h>			/* input password */
 
 #include <libpq-fe.h>       /* PostgreSQL */
 
 #include "main.hpp"
-
-
 
 bool COutput::Initialise(void)
 {
@@ -32,7 +29,9 @@ bool COutput::InsertRow(const std::string& tableName, const std::string& row)
     if(mIsConsumerRunning)
         return false;
     const std::string str = "INSERT INTO " + tableName + " VALUES (" + row + ");";
-    return (PQexec(postGreConnection, str.c_str()) != NULL);
+    PGresult *result = PQexec(postGreConnection, str.c_str());
+    ExecStatusType resultStatus = PQresultStatus(result);
+    return (resultStatus != PGRES_BAD_RESPONSE && resultStatus != PGRES_FATAL_ERROR);
 }
 
 int main(void)
@@ -48,9 +47,9 @@ int main(void)
 			  << std::endl;
 
 	std::cout << "  Inserting Row..." << std::endl;
-	std::cout << "    Inserted two rows (12, Asterix) and (14, Idefix) with outputs: "
-			  << coutput.InsertRow("helloworld", "12, Asterix") << ' '
-			  << coutput.InsertRow("helloworld", "14, Idefix")
+	std::cout << "    Inserted two rows (12, 'Asterix') and (14, 'Idefix') with outputs: "
+			  << coutput.InsertRow("helloworld(id, name)", "12, 'Asterix'") << ' '
+			  << coutput.InsertRow("helloworld", "14, 'Idefix'")
 			  << std::endl;
 
 	std::cout << "  Closing connection..." << std::endl;
