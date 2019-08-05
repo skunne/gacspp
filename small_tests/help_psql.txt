@@ -1,0 +1,5 @@
+psql -h dbod-skunne-testing.cern.ch -p 6601 -U admin
+[[password]]
+\c postgres
+\dt
+SELECT * FROM helloworld;
