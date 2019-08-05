@@ -289,7 +289,10 @@ bool COutput::InsertRow(const std::string& tableName, const std::string& row)
     if(mIsConsumerRunning)
         return false;
     const std::string str = "INSERT INTO " + tableName + " VALUES (" + row + ");";
-    return (PQexec(postGreConnection, str.c_str()) != NULL);
+    PGresult *result = PQexec(postGreConnection, str.c_str());
+    ExecStatusType resultStatus = PQresultStatus(result);
+    return (resultStatus != PGRES_BAD_RESPONSE && resultStatus != PGRES_FATAL_ERROR);
+    /* this return shows errors but hides warnings */
 }
 
 void COutput::QueueInserts(std::unique_ptr<CInsertStatements>&& statements)

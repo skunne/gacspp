@@ -32,6 +32,7 @@ bool COutput::InsertRow(const std::string& tableName, const std::string& row)
     PGresult *result = PQexec(postGreConnection, str.c_str());
     ExecStatusType resultStatus = PQresultStatus(result);
     return (resultStatus != PGRES_BAD_RESPONSE && resultStatus != PGRES_FATAL_ERROR);
+    /* this return shows errors but hides warnings */
 }
 
 int main(void)
