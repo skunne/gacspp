@@ -289,7 +289,7 @@ bool COutput::InsertRow(const std::string& tableName, const std::string& row)
     if(mIsConsumerRunning)
         return false;
     const std::string str = "INSERT INTO " + tableName + " VALUES (" + row + ");";
-    return sqlite3_exec(mDB, str.c_str(), nullptr, nullptr, nullptr) == SQLITE_OK;
+    return (PQexec(postGreConnection, str.c_str()) != NULL);
 }
 
 void COutput::QueueInserts(std::unique_ptr<CInsertStatements>&& statements)

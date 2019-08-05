@@ -16,6 +16,7 @@ public:
     bool Initialise();
     void Shutdown();
     bool CreateTable(const std::string& tableName, const std::string& column);
+    bool InsertRow(const std::string& tableName, const std::string& row);
 
 };
 

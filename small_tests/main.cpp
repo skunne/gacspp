@@ -24,6 +24,14 @@ bool COutput::CreateTable(const std::string& tableName, const std::string& colum
     return (PQexec(postGreConnection, str.c_str()) != NULL);
 }
 
+bool COutput::InsertRow(const std::string& tableName, const std::string& row)
+{
+    if(mIsConsumerRunning)
+        return false;
+    const std::string str = "INSERT INTO " + tableName + " VALUES (" + row + ");";
+    return (PQexec(postGreConnection, str.c_str()) != NULL);
+}
+
 int main(void)
 {
 	COutput coutput;
@@ -32,8 +40,14 @@ int main(void)
 	std::cout << "    Output of connection: " << coutput.Initialise() << std::endl;
 
 	std::cout << "  Creating Table..." << std::endl;
-	std::cout << "    Table created with output: "
-			  << coutput.CreateTable("Hello World",    "id serial PRIMARY KEY, name VARCHAR (50)")
+	std::cout << "    Table 'Hello World' created with output: "
+			  << coutput.CreateTable("Hello World", "id serial PRIMARY KEY, name VARCHAR (50)")
+			  << std::endl;
+
+	std::cout << "  Inserting Row..." << std::endl;
+	std::cout << "    Inserted two rows (12, Asterix) and (14, Idefix) with outputs: "
+			  << coutput.InsertRow("Hello World", "12, Asterix") << ','
+			  << coutput.InsertRow("Hello World", "14, Idefix")
 			  << std::endl;
 
 	std::cout << "  Closing connection..." << std::endl;
