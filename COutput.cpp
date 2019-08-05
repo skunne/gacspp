@@ -141,6 +141,13 @@ std::size_t CInsertStatements::BindAndInsert(sqlite3_stmt* const stmt)
         sqlite3_step(stmt);
         sqlite3_clear_bindings(stmt);
         sqlite3_reset(stmt);
+        /*PQexecPrepared(PGconn *conn,
+                         const char *stmtName,
+                         int nParams,
+                         const char * const *paramValues,
+                         const int *paramLengths,
+                         const int *paramFormats,
+                         int resultFormat);*/
         numInserted += 1;
     }
 
@@ -257,7 +264,7 @@ void COutput::Shutdown()
 /* postgre Shutdown connection */
 void COutput::Shutdown(void)
 {
-    PQfinish(this->postGreConnection);
+    PQfinish(postGreConnection);
 }
 
 auto COutput::AddPreparedSQLStatement(const std::string& statementString) -> std::size_t
@@ -271,10 +278,10 @@ auto COutput::AddPreparedSQLStatement(const std::string& statementString) -> std
 
 bool COutput::CreateTable(const std::string& tableName, const std::string& columns)
 {
-    if(mIsConsumerRunning)
+    if(mIsConsumerRunning)     /* I do not know what this does? */
         return false;
     const std::string str = "CREATE TABLE " + tableName + "(" + columns + ");";
-    return sqlite3_exec(mDB, str.c_str(), nullptr, nullptr, nullptr) == SQLITE_OK;
+    return (PQexec(postGreConnection, str.c_str()) != NULL);
 }
 
 bool COutput::InsertRow(const std::string& tableName, const std::string& row)
