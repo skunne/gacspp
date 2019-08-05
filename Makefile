@@ -6,7 +6,7 @@ LDFLAGS=-ldl -lpthread $(POSTGREFLAGS) $(EXPFLAGS)
 SOURCES=$(wildcard *.cpp)
 HEADERS=$(wildcard *.hpp) constants.h
 OBJECTS=$(SOURCES:.cpp=.o)
-NAME=gacspp
+NAME=gacspp.out
 
 all: $(SOURCES) $(NAME)
     
@@ -27,4 +27,4 @@ re: fclean all
 sqlite3:
 	gcc -O3 -march=native -DSQLITE_THREADSAFE=0 -DSQLITE_ENABLE_RTREE=1 -c sqlite3.c
 
-.PHONY: gacspp
+
