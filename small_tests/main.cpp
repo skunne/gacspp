@@ -1,12 +1,15 @@
 #include <iostream>
+#include <curses.h>			/* input password */
 
 #include <libpq-fe.h>       /* PostgreSQL */
 
 #include "main.hpp"
 
+
+
 bool COutput::Initialise(void)
 {
-    this->postGreConnection = PQconnectdb("user=admin password=changeme host=dbod-skunne-testing.cern.ch port=6601");
+    this->postGreConnection = PQconnectdb("user=admin host=dbod-skunne-testing.cern.ch port=6601 dbname=postgres");
     return (this->postGreConnection != NULL);  /* Although the doc doesn't say anything about failure */
     //return (true);
 }
@@ -40,14 +43,14 @@ int main(void)
 	std::cout << "    Output of connection: " << coutput.Initialise() << std::endl;
 
 	std::cout << "  Creating Table..." << std::endl;
-	std::cout << "    Table 'Hello World' created with output: "
-			  << coutput.CreateTable("Hello World", "id serial PRIMARY KEY, name VARCHAR (50)")
+	std::cout << "    Table 'helloworld' created with output: "
+			  << coutput.CreateTable("helloworld", "id serial PRIMARY KEY, name VARCHAR (50)")
 			  << std::endl;
 
 	std::cout << "  Inserting Row..." << std::endl;
 	std::cout << "    Inserted two rows (12, Asterix) and (14, Idefix) with outputs: "
-			  << coutput.InsertRow("Hello World", "12, Asterix") << ','
-			  << coutput.InsertRow("Hello World", "14, Idefix")
+			  << coutput.InsertRow("helloworld", "12, Asterix") << ' '
+			  << coutput.InsertRow("helloworld", "14, Idefix")
 			  << std::endl;
 
 	std::cout << "  Closing connection..." << std::endl;

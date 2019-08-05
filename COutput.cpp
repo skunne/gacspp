@@ -208,7 +208,7 @@ bool COutput::Initialise(const std::experimental::filesystem::path& dbFilePath, 
 /* postgre initialise connection to db */
 bool COutput::Initialise(void)
 {
-    this->postGreConnection = PQconnectdb("user=admin password=changeme host=dbod-skunne-testing.cern.ch port=6601");
+    this->postGreConnection = PQconnectdb("user=admin host=dbod-skunne-testing.cern.ch port=6601 dbname=postgres");
     return (this->postGreConnection != NULL);  /* Although the doc doesn't say anything about failure */
     //return (true);
 }
