@@ -76,23 +76,34 @@ int main(void)
 {
 	COutput coutput;
 
+	std::cout << std::boolalpha;	// Print booleans as "true" and "false"
+
 	std::cout << "  Opening connection..." << std::endl;
-	std::cout << "    Output of connection: " << coutput.Initialise() << std::endl;
+	std::cout << "    Connection with success: " << coutput.Initialise() << std::endl;
 
 	std::cout << "  Creating Table..." << std::endl;
-	std::cout << "    Table 'helloworld' created with output: "
+	std::cout << "    Table 'helloworld' created with success: "
 			  << coutput.CreateTable("helloworld", "id serial PRIMARY KEY, name VARCHAR (50)")
 			  << std::endl;
 
 	std::cout << "  Inserting Row..." << std::endl;
-	std::cout << "    Inserted two rows (12, 'Asterix') and (14, 'Idefix') with outputs: "
-			  << coutput.InsertRow("helloworld(id, name)", "12, 'Asterix'") << ' '
+	std::cout << "    Inserted two rows (12, 'Asterix') and (14, 'Idefix') with success: "
+			  << coutput.InsertRow("helloworld(id, name)", "12, 'Asterix'") << ','
 			  << coutput.InsertRow("helloworld", "14, 'Idefix'")
 			  << std::endl;
 
 	std::cout << "  Preparing 1 Statement..." << std::endl;
 	std::cout << "    " << coutput.AddPreparedSQLStatement("SELECT ? FROM ?")
 			  << " Done." << std::endl;
+
+	std::cout << "  Executing previously prepared statement..." << std::endl;
+	char const *paramValues[] = {"*", "helloworld"};
+	int paramLengths[] = {1 * sizeof(char), 10 * sizeof(char)};
+	PGresult *result = PQexecPrepared(coutput.postGreConnection, "1", 2, paramValues, paramLengths, NULL, 0);
+	ExecStatusType status = PQresultStatus(result);
+	std::cout << "    Success: "
+			  << (status != PGRES_EMPTY_QUERY && status != PGRES_BAD_RESPONSE && status != PGRES_FATAL_ERROR)
+			  << std::endl;
 
 	std::cout << "  Closing connection..." << std::endl;
 	coutput.Shutdown();

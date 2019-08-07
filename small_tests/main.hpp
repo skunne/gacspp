@@ -11,9 +11,9 @@ private:
     std::size_t nbPreparedStatements = 0;
     
     std::atomic_bool mIsConsumerRunning = false;
-    PGconn *postGreConnection;
 
 public:
+    PGconn *postGreConnection;	// should be private; public for testing purposes
     bool Initialise();
     void Shutdown();
     bool CreateTable(const std::string& tableName, const std::string& column);
