@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <algorithm>        /* std::count() counting number of params in a query */
 
 #include <libpq-fe.h>       /* PostgreSQL */
 
@@ -267,13 +268,48 @@ void COutput::Shutdown(void)
     PQfinish(postGreConnection);
 }
 
-auto COutput::AddPreparedSQLStatement(const std::string& statementString) -> std::size_t
+/*
+** Transform "Hello ? World ?" into "Hello $1 World $2"
+*/
+void COutput::replaceQuestionMarks(std::string& statementString)
 {
-    sqlite3_stmt* preparedStatement;
-    sqlite3_prepare_v3(mDB, statementString.c_str(), statementString.size() + 1, SQLITE_PREPARE_PERSISTENT, &preparedStatement, nullptr);
-    assert(preparedStatement != nullptr);
-    mPreparedStatements.emplace_back(preparedStatement);
-    return (mPreparedStatements.size() - 1);
+    // count the '?' as they are replaced
+    std::size_t n = 1;
+    // find first '?'
+    std::size_t index = statementString.find('?');
+    // while there remains a '?' in statementString
+    while (index != std::string::npos)
+    {
+        // build the "$n" substring that will replace '?'
+        std::string str = "$n";
+        str.replace(1, 1, std::to_string(n));
+        // replace '?' with "$n"
+        statementString.replace(index, 1, str);
+        // count the '?' so the next substring is "$(n+1)"
+        ++n;
+        // find next '?'
+        index = statementString.find('?');
+    }
+}
+
+auto COutput::AddPreparedSQLStatement(const std::string& queryString) -> std::size_t
+{
+    // make a local copy of the string, that will be edited to replace '?' with "$n"
+    std::string statementString(queryString);
+
+    // arguments for PQprepare
+    std::string stmtName = std::to_string(nbPreparedStatements);
+    int nParams = std::count(statementString.begin(), statementString.end(), '?');
+    const Oid *paramTypes = NULL;   // ???
+
+    // replace "? ? ?" placeholders with "$1 $2 $3" in query string
+    replaceQuestionMarks(statementString);
+
+    PQprepare(postGreConnection, stmtName.c_str(), statementString.c_str(), nParams, paramTypes);
+
+    // save number of prepared statements
+    nbPreparedStatements += 1;
+    return nbPreparedStatements;
 }
 
 bool COutput::CreateTable(const std::string& tableName, const std::string& columns)

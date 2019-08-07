@@ -61,7 +61,8 @@ private:
     std::unique_ptr<CInsertStatements> mStatementsBuffer[OUTPUT_BUF_SIZE];
 
     sqlite3* mDB = nullptr;
-    std::vector<sqlite3_stmt*> mPreparedStatements;
+    std::vector<sqlite3_stmt*> mPreparedStatements;   // not used by postgres
+    std::size_t nbPreparedStatements = 0;
 
     std::experimental::filesystem::path mDBFilePath;
 
@@ -82,6 +83,7 @@ public:
     bool StartConsumer();
     void Shutdown();
 
+    void replaceQuestionMarks(std::string& statementString);
     auto AddPreparedSQLStatement(const std::string& queryString) -> std::size_t;
     bool CreateTable(const std::string& tableName, const std::string& column);
     bool InsertRow(const std::string& tableName, const std::string& row);
