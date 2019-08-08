@@ -1,75 +1,32 @@
 #include <iostream>
-#include <algorithm>		/* std::count() */
 
 #include <libpq-fe.h>       /* PostgreSQL */
 
 #include "main.hpp"
 
-bool COutput::Initialise(void)
+bool printStatus(PGresult *result)
 {
-    this->postGreConnection = PQconnectdb("user=admin host=dbod-skunne-testing.cern.ch port=6601 dbname=postgres");
-    return (this->postGreConnection != NULL);  /* Although the doc doesn't say anything about failure */
-    //return (true);
-}
+	ExecStatusType status = PQresultStatus(result);
 
-void COutput::Shutdown(void)
-{
-	PQfinish(this->postGreConnection);
-}
+	bool empty_query = (status == PGRES_EMPTY_QUERY);
+	bool bad_response = (status == PGRES_BAD_RESPONSE);
+	bool fatal_error = (status == PGRES_FATAL_ERROR);
+	bool everything_ok = !(empty_query || bad_response || fatal_error);
 
-bool COutput::CreateTable(const std::string& tableName, const std::string& columns)
-{
-    if(mIsConsumerRunning)     /* I do not know what this does? */
-        return false;
-    const std::string str = "CREATE TABLE " + tableName + "(" + columns + ");";
-    return (PQexec(postGreConnection, str.c_str()) != NULL);
-}
-
-bool COutput::InsertRow(const std::string& tableName, const std::string& row)
-{
-    if(mIsConsumerRunning)
-        return false;
-    const std::string str = "INSERT INTO " + tableName + " VALUES (" + row + ");";
-    PGresult *result = PQexec(postGreConnection, str.c_str());
-    ExecStatusType resultStatus = PQresultStatus(result);
-    return (resultStatus != PGRES_BAD_RESPONSE && resultStatus != PGRES_FATAL_ERROR);
-    /* this return shows errors but hides warnings */
-}
-
+	std::cout << "    Status: " << PQresStatus(status) << std::endl;
+	if (!everything_ok)
+		std::cout << PQresultErrorMessage(result);
 /*
-** Transform "Hello ? World ?" into "Hello $1 World $2"
+	std::cout << "    Status: "
+			  << (empty_query ?
+			  		"empty_query"
+			  		: (bad_response ?
+			  			"bad_response"
+			  			: (fatal_error ? "fatal_error" : "everything ok")))
+			  << std::endl;
 */
-void COutput::replaceQuestionMarks(std::string& statementString)
-{
-    std::size_t n = 1;
-    std::size_t index = statementString.find('?');
-    while (index != std::string::npos)
-    {
-        std::string str = "$n";
-        str.replace(1, 1, std::to_string(n));
-        statementString.replace(index, 1, str);
-        ++n;
-        index = statementString.find('?');
-    }
-}
 
-auto COutput::AddPreparedSQLStatement(const std::string& queryString) -> std::size_t
-{
-    /* // SQL
-    sqlite3_stmt* preparedStatement;
-    sqlite3_prepare_v3(mDB, statementString.c_str(), statementString.size() + 1, SQLITE_PREPARE_PERSISTENT, &preparedStatement, nullptr);
-    assert(preparedStatement != nullptr);
-    mPreparedStatements.emplace_back(preparedStatement);
-    return (mPreparedStatements.size() - 1); */
-
-    std::string statementString(queryString);   // local non-const copy
-    std::string stmtName = std::to_string(nbPreparedStatements);
-    int nParams = std::count(statementString.begin(), statementString.end(), '?');
-    replaceQuestionMarks(statementString);
-    const Oid *paramTypes = NULL;   // ???
-    PQprepare(postGreConnection, stmtName.c_str(), statementString.c_str(), nParams, paramTypes);
-    nbPreparedStatements += 1;
-    return nbPreparedStatements;
+	return everything_ok;
 }
 
 int main(void)
@@ -79,33 +36,38 @@ int main(void)
 	std::cout << std::boolalpha;	// Print booleans as "true" and "false"
 
 	std::cout << "  Opening connection..." << std::endl;
-	std::cout << "    Connection with success: " << coutput.Initialise() << std::endl;
+	std::cout << "    Connection with success: " << coutput.Initialise() << std::endl << std::endl;
 
 	std::cout << "  Creating Table..." << std::endl;
 	std::cout << "    Table 'helloworld' created with success: "
 			  << coutput.CreateTable("helloworld", "id serial PRIMARY KEY, name VARCHAR (50)")
-			  << std::endl;
+			  << std::endl << std::endl;
 
 	std::cout << "  Inserting Row..." << std::endl;
-	std::cout << "    Inserted two rows (12, 'Asterix') and (14, 'Idefix') with success: "
+	std::cout << "    Inserted three rows (12, 'Asterix'), (14, 'Idefix'), (15, 'Assurancetourix')" << std::endl;
+	std::cout << "      Success: "
 			  << coutput.InsertRow("helloworld(id, name)", "12, 'Asterix'") << ','
-			  << coutput.InsertRow("helloworld", "14, 'Idefix'")
-			  << std::endl;
+			  << coutput.InsertRow("helloworld", "14, 'Idefix'") << ','
+			  << coutput.InsertRow("helloworld", "15, 'Assurancetourix'")
+			  << std::endl << std::endl;
 
-	std::cout << "  Preparing 1 Statement..." << std::endl;
-	std::cout << "    " << coutput.AddPreparedSQLStatement("SELECT ? FROM ?")
-			  << " Done." << std::endl;
+	std::cout << "  Preparing 4 Statements: no params, 1 param, 1 param, 2 params..." << std::endl;
+	coutput.AddPreparedSQLStatement("SELECT * FROM helloworld");
+	coutput.AddPreparedSQLStatement("SELECT ? FROM helloworld");
+	coutput.AddPreparedSQLStatement("SELECT * FROM ?");
+	std::size_t n = coutput.AddPreparedSQLStatement("SELECT ? FROM ?");
+	std::cout << "    " << n << " Done." << std::endl << std::endl;
 
-	std::cout << "  Executing previously prepared statement..." << std::endl;
+	std::cout << "  Executing previously prepared statements..." << std::endl;
 	char const *paramValues[] = {"*", "helloworld"};
-	int paramLengths[] = {1 * sizeof(char), 10 * sizeof(char)};
-	PGresult *result = PQexecPrepared(coutput.postGreConnection, "1", 2, paramValues, paramLengths, NULL, 0);
-	ExecStatusType status = PQresultStatus(result);
-	std::cout << "    Success: "
-			  << (status != PGRES_EMPTY_QUERY && status != PGRES_BAD_RESPONSE && status != PGRES_FATAL_ERROR)
-			  << std::endl;
+	int paramLengths[] = {2 * sizeof(char), 11 * sizeof(char)};
+	//PQexecPrepared(PGconn *conn, stmtName, nParams, paramValues, paramLengths, paramFormats, resultFormat);
+	printStatus(PQexecPrepared(coutput.postGreConnection, "0", 0, NULL, NULL, NULL, 0));
+	printStatus(PQexecPrepared(coutput.postGreConnection, "1", 1, paramValues, paramLengths, NULL, 0));
+	printStatus(PQexecPrepared(coutput.postGreConnection, "2", 1, &(paramValues[1]), &(paramLengths[1]), NULL, 0));
+	printStatus(PQexecPrepared(coutput.postGreConnection, "3", 2, paramValues, paramLengths, NULL, 0));
 
-	std::cout << "  Closing connection..." << std::endl;
+	std::cout << std::endl << "  Closing connection..." << std::endl;
 	coutput.Shutdown();
 	std::cout << "  All done." << std::endl;
 

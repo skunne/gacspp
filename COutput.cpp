@@ -351,6 +351,30 @@ void COutput::QueueInserts(std::unique_ptr<CInsertStatements>&& statements)
 
 void COutput::ConsumerThread()
 {
+    PQexec(postGreConnection, "BEGIN TRANSACTION");
+    std::size_t numInsertedCurTransaction = 0;
+    for (size_t n = 0; n < nbPreparedStatements; ++n)
+    {
+        if(numInsertedCurTransaction > 25000)
+        {
+            PQexec(postGreConnection, "END TRANSACTION; BEGIN TRANSACTION");
+            numInsertedCurTransaction = 0;
+        }
+        // arguments for PQexecPrepared
+        std::string stmtName = std::to_string(n);
+        int nParams = 0;            //??
+        char **paramValues = NULL;  // get them somewhere from BindableValue??
+        int *paramLengths = NULL;   //??
+        int *paramFormats = NULL;   // NULL means all params are strings, which is maybe not optimal but ok
+        int resultFormat = 0;       // text; change to 1 for binary
+
+        // execute one prepared statement
+        PQexecPrepared(postGreConnection, stmtName.c_str(), nParams, paramValues, paramLengths, paramFormats, resultFormat);   
+    }
+
+}
+void COutput::oldConsumerThread()
+{
     sqlite3_exec(mDB, "BEGIN TRANSACTION", nullptr, nullptr, nullptr);
 
     std::size_t numInsertedCurTransaction = 0;
@@ -361,6 +385,7 @@ void COutput::ConsumerThread()
             if(numInsertedCurTransaction > 25000)
             {
                 sqlite3_exec(mDB, "END TRANSACTION; BEGIN TRANSACTION", nullptr, nullptr, nullptr);
+                //PQexec(postGreConnection, "END TRANSACTION; BEGIN TRANSACTION");
                 numInsertedCurTransaction = 0;
             }
 
@@ -376,7 +401,6 @@ void COutput::ConsumerThread()
             **                          const int *paramFormats,
             **                          int resultFormat);
             */
-
             mStatementsBuffer[mConsumerIdx] = nullptr;
             mConsumerIdx = (mConsumerIdx + 1) % OUTPUT_BUF_SIZE;
         }

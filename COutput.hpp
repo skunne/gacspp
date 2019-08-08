@@ -91,4 +91,5 @@ public:
     void QueueInserts(std::unique_ptr<CInsertStatements>&& statements);
 
     void ConsumerThread();
+    void oldConsumerThread();
 };

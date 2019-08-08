@@ -3,7 +3,7 @@ EXPFLAGS=-L/Users/stephan/homebrew/opt/llvm/lib -lc++experimental
 CC=g++-9
 CFLAGS=-O3 -march=native -std=c++17 -Wall -Wextra -pedantic
 LDFLAGS=-ldl -lpthread $(POSTGREFLAGS) $(EXPFLAGS)
-SOURCES=main.cpp
+SOURCES=COutput.cpp main.cpp
 HEADERS=main.hpp
 OBJECTS=$(SOURCES:.cpp=.o)
 NAME=test

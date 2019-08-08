@@ -3,6 +3,8 @@
 #include <libpq-fe.h>
 #include <experimental/filesystem>
 
+bool printStatus(PGresult *result);
+
 class COutput
 {
 private:
