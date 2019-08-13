@@ -131,7 +131,7 @@ std::size_t CInsertStatements::BindAndInsert(struct Statement const *stmt)
         return 0;
 
     //const std::size_t numToBindPerRow = static_cast<std::size_t>(sqlite3_bind_parameter_count(stmt));
-    const std::size_t numToBindPerRow = stmt->nParams;  // no no this is not correct ???
+    const std::size_t numToBindPerRow = stmt->nParams;  // maybe?
 
     assert(numToBindPerRow > 0);
     assert((mValues.size() % numToBindPerRow) == 0);
@@ -141,11 +141,11 @@ std::size_t CInsertStatements::BindAndInsert(struct Statement const *stmt)
     std::string stmtName = std::to_string(stmt->nb);//std::to_string(n);  // where to find n ??
     while(curValsIt != mValues.end())
     {
-        //int nParams = 0;            //??
-        //char **paramValues = NULL;  // get them somewhere from BindableValue??
-        //int *paramLengths = NULL;   //??
-        //int *paramFormats = NULL;   // NULL means all params are strings, which is maybe not optimal but ok
-        //int resultFormat = 0;       // text; change to 1 for binary
+        int nParams = stmt->nParams;
+        char **paramValues = NULL;  // get them somewhere from BindableValue??
+        int *paramLengths = NULL;   //??
+        int *paramFormats = NULL;   // NULL means all params are strings, which is maybe not optimal but ok
+        int resultFormat = 0;       // text; change to 1 for binary
         for(std::size_t numBinded=1; numBinded<=numToBindPerRow; ++numBinded)
         {
             //(*curValsIt)->Bind(paramValues, paramLengths);
