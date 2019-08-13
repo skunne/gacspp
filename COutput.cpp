@@ -125,18 +125,20 @@ void CInsertStatements::AddValue(std::string&& value)
     mValues.emplace_back(new CBindableStringValue(std::move(value)));
 }
 
-std::size_t CInsertStatements::BindAndInsert(sqlite3_stmt* const stmt)
+std::size_t CInsertStatements::BindAndInsert(struct Statement const *stmt)
 {
     if(mValues.empty())
         return 0;
 
-    const std::size_t numToBindPerRow = static_cast<std::size_t>(sqlite3_bind_parameter_count(stmt));
+    //const std::size_t numToBindPerRow = static_cast<std::size_t>(sqlite3_bind_parameter_count(stmt));
+    const std::size_t numToBindPerRow = stmt->nParams;  // no no this is not correct ???
+
     assert(numToBindPerRow > 0);
     assert((mValues.size() % numToBindPerRow) == 0);
 
     auto curValsIt = mValues.begin();
     std::size_t numInserted = 0;
-    std::string stmtName = "3";//std::to_string(n);  // where to find n ??
+    std::string stmtName = std::to_string(stmt->nb);//std::to_string(n);  // where to find n ??
     while(curValsIt != mValues.end())
     {
         //int nParams = 0;            //??
@@ -149,9 +151,9 @@ std::size_t CInsertStatements::BindAndInsert(sqlite3_stmt* const stmt)
             //(*curValsIt)->Bind(paramValues, paramLengths);
             ++curValsIt;
         }
-        sqlite3_step(stmt);
-        sqlite3_clear_bindings(stmt);
-        sqlite3_reset(stmt);
+        //sqlite3_step(stmt);
+        //sqlite3_clear_bindings(stmt);
+        //sqlite3_reset(stmt);
         /*PQexecPrepared(PGconn *conn,
                          const char *stmtName,
                          int nParams,
@@ -318,6 +320,8 @@ auto COutput::AddPreparedSQLStatement(const std::string& queryString) -> std::si
     PQprepare(postGreConnection, stmtName.c_str(), statementString.c_str(), nParams, paramTypes);
 
     // save number of prepared statements
+    struct Statement stmt = { .nb = nbPreparedStatements, .nParams = nParams };
+    mPreparedStatements.emplace_back(stmt);
     nbPreparedStatements += 1;
     return nbPreparedStatements;
 }
@@ -366,8 +370,9 @@ void COutput::ConsumerThread()
     {
         // ConsumerThread() takes an CInsertStatements object from the queue
         const std::size_t sqlStmtIdx = mStatementsBuffer[mConsumerIdx]->GetPreparedStatementIdx();
-        sqlite3_stmt* sqlStmt = mPreparedStatements[sqlStmtIdx];
-        numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(sqlStmt);
+        //sqlite3_stmt* sqlStmt = mPreparedStatements[sqlStmtIdx];
+        struct Statement stmt = mPreparedStatements[sqlStmtIdx];    // get name and number of arguments
+        numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(&stmt);
 
 
     }
@@ -422,6 +427,7 @@ void COutput::badConsumerThread()
     PQexec(postGreConnection, "END TRANSACTION");
 }
 */
+/*
 void COutput::oldConsumerThread()
 {
     sqlite3_exec(mDB, "BEGIN TRANSACTION", nullptr, nullptr, nullptr);
@@ -441,7 +447,7 @@ void COutput::oldConsumerThread()
             const std::size_t sqlStmtIdx = mStatementsBuffer[mConsumerIdx]->GetPreparedStatementIdx();
             sqlite3_stmt* sqlStmt = mPreparedStatements[sqlStmtIdx];
             numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(sqlStmt);
-            /*
+            *
             ** PGresult *PQexecPrepared(PGconn *conn,
             **                          const char *stmtName,
             **                          int nParams,
@@ -449,7 +455,7 @@ void COutput::oldConsumerThread()
             **                          const int *paramLengths,
             **                          const int *paramFormats,
             **                          int resultFormat);
-            */
+            *
             mStatementsBuffer[mConsumerIdx] = nullptr;
             mConsumerIdx = (mConsumerIdx + 1) % OUTPUT_BUF_SIZE;
         }
@@ -466,3 +472,4 @@ void COutput::oldConsumerThread()
 
     sqlite3_exec(mDB, "END TRANSACTION", nullptr, nullptr, nullptr);
 }
+*/

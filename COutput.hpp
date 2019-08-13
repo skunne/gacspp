@@ -44,9 +44,14 @@ public:
     void AddValue(const std::string& value);
     void AddValue(std::string&& value);
 
-    auto BindAndInsert(sqlite3_stmt* const stmt) -> std::size_t;
+    auto BindAndInsert(struct Statement const *stmt) -> std::size_t;
 };
 
+struct Statement
+{
+    std::size_t nb;
+    int    nParams;
+};
 
 class COutput
 {
@@ -61,7 +66,8 @@ private:
     std::unique_ptr<CInsertStatements> mStatementsBuffer[OUTPUT_BUF_SIZE];
 
     sqlite3* mDB = nullptr;
-    std::vector<sqlite3_stmt*> mPreparedStatements;   // not used by postgres
+    //std::vector<sqlite3_stmt*> mPreparedStatements;   // not used by postgres
+    std::vector<struct Statement> mPreparedStatements;
     std::size_t nbPreparedStatements = 0;
 
     std::experimental::filesystem::path mDBFilePath;
@@ -92,5 +98,5 @@ public:
 
     //void GetParams(char const *stmtName, int *nParams, char ***paramValues, int **paramLengths, int **paramFormats);
     void ConsumerThread();
-    void oldConsumerThread();
+    //void oldConsumerThread();
 };
