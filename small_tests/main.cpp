@@ -51,21 +51,19 @@ int main(void)
 			  << coutput.InsertRow("helloworld", "15, 'Assurancetourix'")
 			  << std::endl << std::endl;
 
-	std::cout << "  Preparing 4 Statements: no params, 1 param, 1 param, 2 params..." << std::endl;
+	std::cout << "  Preparing 3 Statements: no params, 1 param, 2 params..." << std::endl;
 	coutput.AddPreparedSQLStatement("SELECT * FROM helloworld");
 	coutput.AddPreparedSQLStatement("SELECT ? FROM helloworld");
-	coutput.AddPreparedSQLStatement("SELECT * FROM ?");
-	std::size_t n = coutput.AddPreparedSQLStatement("SELECT ? FROM ?");
+	std::size_t n = coutput.AddPreparedSQLStatement("INSERT INTO helloworld VALUES (?,?);");
 	std::cout << "    " << n << " Done." << std::endl << std::endl;
 
 	std::cout << "  Executing previously prepared statements..." << std::endl;
-	char const *paramValues[] = {"*", "helloworld"};
-	int paramLengths[] = {2 * sizeof(char), 11 * sizeof(char)};
+	char const *paramValues[] = {"*", "16", "'Abraracourcix'"};
+	int paramLengths[] = {1 * sizeof(char), 2 * sizeof(char), 15 * sizeof(char)};
 	//PQexecPrepared(PGconn *conn, stmtName, nParams, paramValues, paramLengths, paramFormats, resultFormat);
 	printStatus(PQexecPrepared(coutput.postGreConnection, "0", 0, NULL, NULL, NULL, 0));
 	printStatus(PQexecPrepared(coutput.postGreConnection, "1", 1, paramValues, paramLengths, NULL, 0));
-	printStatus(PQexecPrepared(coutput.postGreConnection, "2", 1, &(paramValues[1]), &(paramLengths[1]), NULL, 0));
-	printStatus(PQexecPrepared(coutput.postGreConnection, "3", 2, paramValues, paramLengths, NULL, 0));
+	printStatus(PQexecPrepared(coutput.postGreConnection, "2", 2, &(paramValues[1]), &(paramLengths[1]), NULL, 0));
 
 	std::cout << std::endl << "  Closing connection..." << std::endl;
 	coutput.Shutdown();

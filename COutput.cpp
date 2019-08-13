@@ -54,10 +54,14 @@ public:
     CBindableInt64Value(std::uint64_t val)
         : mValue(val)
     {}
-
+    //bool Bind(char **paramValues, int *paramLengths, size_t idx)
     bool Bind(sqlite3_stmt* const stmt, int idx) final
     {
-        return sqlite3_bind_int64(stmt, idx, mValue) == SQLITE_OK;
+        std::string param = std::to_string(mValue);
+        //paramValues[idx] = new char[param.size() + 1];
+        //param.copy(paramValues[idx], param.size() + 1);
+        //paramLengths[idx] = param.size();
+        return (true);  // why??
     }
 };
 
@@ -132,11 +136,17 @@ std::size_t CInsertStatements::BindAndInsert(sqlite3_stmt* const stmt)
 
     auto curValsIt = mValues.begin();
     std::size_t numInserted = 0;
+    std::string stmtName = "3";//std::to_string(n);  // where to find n ??
     while(curValsIt != mValues.end())
     {
+        //int nParams = 0;            //??
+        //char **paramValues = NULL;  // get them somewhere from BindableValue??
+        //int *paramLengths = NULL;   //??
+        //int *paramFormats = NULL;   // NULL means all params are strings, which is maybe not optimal but ok
+        //int resultFormat = 0;       // text; change to 1 for binary
         for(std::size_t numBinded=1; numBinded<=numToBindPerRow; ++numBinded)
         {
-            (*curValsIt)->Bind(stmt, numBinded);
+            //(*curValsIt)->Bind(paramValues, paramLengths);
             ++curValsIt;
         }
         sqlite3_step(stmt);
@@ -351,6 +361,36 @@ void COutput::QueueInserts(std::unique_ptr<CInsertStatements>&& statements)
 
 void COutput::ConsumerThread()
 {
+    std::size_t numInsertedCurTransaction = 0;
+    while (mConsumerIdx != mProducerIdx)
+    {
+        // ConsumerThread() takes an CInsertStatements object from the queue
+        const std::size_t sqlStmtIdx = mStatementsBuffer[mConsumerIdx]->GetPreparedStatementIdx();
+        sqlite3_stmt* sqlStmt = mPreparedStatements[sqlStmtIdx];
+        numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(sqlStmt);
+
+
+    }
+    
+
+    //CInsertStatement::BindAndInsert() is called by the consumer thread
+    //CInsertStatement::BindAndInsert() knows the prepared query index/name (CInsertStatement::mPreparedStatementIdx) and the parameter values (CInsertStatement::mValues)
+    //CInsertStatement::BindAndInsert() determines the number N of parameters per insert-into statement (=number of columns of the table)
+    //CInsertStatement::BindAndInsert() calls IBindableValue::Bind() for the next N values in CInsertStatement::mValues
+    //IBindableValue::Bind() is implemented by the appropriate subclasses (in your case the function will add the value stored by the object of the subclass of IBindableValue to the parameter list for the psql API)
+    //CInsertStatement::BindAndInsert() executes the prepared statement
+    //Point 5 is repeated until all values in CInsertStatement::mValues have been touched
+}
+/*
+
+void COutput::GetParams(char const *stmtName, int *nParams, char ***paramValues, int **paramLengths, int **paramFormats)
+{
+    PGresult *description = PQdescribePrepared(postGreConnection, stmtName);
+    *nParams = PQnfields(description);  // not so sure this is correct
+    
+}
+void COutput::badConsumerThread()
+{
     PQexec(postGreConnection, "BEGIN TRANSACTION");
     std::size_t numInsertedCurTransaction = 0;
     for (size_t n = 0; n < nbPreparedStatements; ++n)
@@ -367,12 +407,21 @@ void COutput::ConsumerThread()
         int *paramLengths = NULL;   //??
         int *paramFormats = NULL;   // NULL means all params are strings, which is maybe not optimal but ok
         int resultFormat = 0;       // text; change to 1 for binary
+        GetParams(stmtName.c_str(), &nParams, &paramValues, &paramLengths, &paramFormats);
+
+
+        //numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(sqlStmt);
+        //mStatementsBuffer[mConsumerIdx] = nullptr;
+        //mConsumerIdx = (mConsumerIdx + 1) % OUTPUT_BUF_SIZE;
+
 
         // execute one prepared statement
         PQexecPrepared(postGreConnection, stmtName.c_str(), nParams, paramValues, paramLengths, paramFormats, resultFormat);   
     }
 
+    PQexec(postGreConnection, "END TRANSACTION");
 }
+*/
 void COutput::oldConsumerThread()
 {
     sqlite3_exec(mDB, "BEGIN TRANSACTION", nullptr, nullptr, nullptr);

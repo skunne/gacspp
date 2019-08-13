@@ -90,6 +90,7 @@ public:
 
     void QueueInserts(std::unique_ptr<CInsertStatements>&& statements);
 
+    //void GetParams(char const *stmtName, int *nParams, char ***paramValues, int **paramLengths, int **paramFormats);
     void ConsumerThread();
     void oldConsumerThread();
 };
