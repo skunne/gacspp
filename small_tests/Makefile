@@ -6,7 +6,7 @@ LDFLAGS=-ldl -lpthread $(POSTGREFLAGS) $(EXPFLAGS)
 SOURCES=COutput.cpp main.cpp
 HEADERS=main.hpp
 OBJECTS=$(SOURCES:.cpp=.o)
-NAME=test
+NAME=test.out
 
 all: $(SOURCES) $(NAME)
     

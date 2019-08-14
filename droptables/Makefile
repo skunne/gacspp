@@ -6,7 +6,7 @@ LDFLAGS=-ldl -lpthread $(POSTGREFLAGS) $(EXPFLAGS)
 SOURCES=main_droptables.cpp
 HEADERS=
 OBJECTS=$(SOURCES:.cpp=.o)
-NAME=droptables
+NAME=droptables.out
 
 all: $(SOURCES) $(NAME)
     
