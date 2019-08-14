@@ -145,7 +145,7 @@ std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement cons
         return 0;
 
     //const std::size_t numToBindPerRow = static_cast<std::size_t>(sqlite3_bind_parameter_count(stmt));
-    const std::size_t numToBindPerRow = stmt->nParams;  // maybe?
+    const int numToBindPerRow = stmt->nParams;  // maybe?
 
     assert(numToBindPerRow > 0);
     assert((mValues.size() % numToBindPerRow) == 0);
@@ -164,7 +164,7 @@ std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement cons
     int resultFormat = 0;       // text; change to 1 for binary
 
     // make paramValues point to paramValuesArray
-    for (std::size_t numBinded = 0; numBinded<numToBindPerRow; ++numBinded)
+    for (int numBinded = 0; numBinded<numToBindPerRow; ++numBinded)
         paramValues[numBinded] = &(paramValuesArray[numBinded * MAX_PARAM_LENGTH]);
 
     // iterate over all queries in mValues
@@ -172,7 +172,7 @@ std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement cons
     while(curValsIt != mValues.end())
     {
         // retrieve parameters and store them in paramValuesArray
-        for(std::size_t numBinded=0; numBinded<numToBindPerRow; ++numBinded)
+        for(int numBinded=0; numBinded<numToBindPerRow; ++numBinded)
         {
             (*curValsIt)->tostring(paramValues[numBinded]);
             ++curValsIt;
@@ -187,7 +187,7 @@ std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement cons
     free(paramValues);
     free(paramValuesArray);
     mValues.clear();
-    
+
     return numInserted;
 }
 
