@@ -1,15 +1,17 @@
 #include <cassert>
 #include <chrono>
 #include <fstream>
-#include <iomanip>
+#include <iomanip>        /* std::put_time() */
 #include <sstream>
 #include <algorithm>        /* std::count() counting number of params in a query */
 #include <cstdio>           /* snprintf for IBindableValue::tostring() */
 
+//#include <iostream>         /* DEBUG */
+
 #include <libpq-fe.h>       /* PostgreSQL */
 
 #include "constants.h"
-#include "COutput.hpp"
+#include "COutput.hpp"      /* COutput, struct Statement, CInsertStatements, IBindableValue */
 #include "sqlite3.h"
 
 #define MAX_PARAM_LENGTH 100
@@ -145,7 +147,20 @@ std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement cons
         return 0;
 
     //const std::size_t numToBindPerRow = static_cast<std::size_t>(sqlite3_bind_parameter_count(stmt));
-    const int numToBindPerRow = stmt->nParams;  // maybe?
+    const int numToBindPerRow = stmt->nParams;
+
+    /*
+    ** DEBUG
+    */
+    /*std::cout << std::endl;
+    std::cout << "stmt:         " << stmt->id << std::endl;
+    PGresult *description = PQdescribePrepared(conn, std::to_string(stmt->id).c_str());
+    PQprintOpt printopt = { true, true, true, true, true, true };
+    PQprint(stdout, description, &printopt);
+    fprintf(stdout, "\nhello\n");
+    std::cout << "nParams:      " << numToBindPerRow << std::endl;
+    std::cout << "mValues.size: " << mValues.size() << std::endl;
+    //mValues.size(), mPreparedStatementIdx, and the query with its index in AddPreparedStatement()*/
 
     assert(numToBindPerRow > 0);
     assert((mValues.size() % numToBindPerRow) == 0);
@@ -155,7 +170,7 @@ std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement cons
     std::size_t numInserted = 0;
 
     // parameters for PQexecPrepared
-    std::string stmtName = std::to_string(stmt->nb);//std::to_string(n);  // where to find n ??
+    std::string stmtName = std::to_string(stmt->id);//std::to_string(n);  // where to find n ??
     int nParams = stmt->nParams;
     char *paramValuesArray = (char *) malloc(nParams * MAX_PARAM_LENGTH * sizeof(char));  //strings representing params
     char **paramValues = (char **) malloc(nParams * sizeof(char *));  //pointers to paramValuesArray
@@ -266,6 +281,7 @@ void COutput::replaceQuestionMarks(std::string& statementString)
     }
 }
 
+// prepare a query with placeholders
 auto COutput::AddPreparedSQLStatement(const std::string& queryString) -> std::size_t
 {
     // make a local copy of the string, that will be edited to replace '?' with "$n"
@@ -279,13 +295,20 @@ auto COutput::AddPreparedSQLStatement(const std::string& queryString) -> std::si
     // replace "? ? ?" placeholders with "$1 $2 $3" in query string
     replaceQuestionMarks(statementString);
 
+    // prepare the statement with name stmtName
     PQprepare(postGreConnection, stmtName.c_str(), statementString.c_str(), nParams, paramTypes);
 
+    /*
+    ** DEBUG
+    */
+    /*std::cout << "Preparing statement: " << stmtName << std::endl;
+    std::cout << "    " << statementString << std::endl;*/
+
     // save number of prepared statements
-    struct Statement stmt = { .nb = nbPreparedStatements, .nParams = nParams };
+    struct Statement stmt = { .id = nbPreparedStatements, .nParams = nParams };
     mPreparedStatements.emplace_back(stmt);
     nbPreparedStatements += 1;
-    return nbPreparedStatements;
+    return nbPreparedStatements - 1;
 }
 
 bool COutput::CreateTable(const std::string& tableName, const std::string& columns)
@@ -341,6 +364,13 @@ void COutput::ConsumerThread()
             // ConsumerThread() takes an CInsertStatements object from the queue
             const std::size_t sqlStmtIdx = mStatementsBuffer[mConsumerIdx]->GetPreparedStatementIdx();
             struct Statement stmt = mPreparedStatements[sqlStmtIdx];    // get name and number of arguments
+
+            /*
+            ** DEBUG
+            */
+            /*std::cout << std::endl;
+            std::cout << "nbPreparedStatements " << nbPreparedStatements << std::endl;
+            std::cout << "number of queries:   " << (mProducerIdx - mConsumerIdx) % OUTPUT_BUF_SIZE << std::endl;*/
 
             // Bind parameters and execute query
             numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(postGreConnection, &stmt);

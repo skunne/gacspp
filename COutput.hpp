@@ -50,7 +50,7 @@ public:
 
 struct Statement
 {
-    std::size_t nb;
+    std::size_t id;
     int         nParams;
 };
 
