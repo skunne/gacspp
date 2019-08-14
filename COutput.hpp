@@ -18,6 +18,7 @@ struct sqlite3_stmt;
 class IBindableValue
 {
 public:
+    virtual void tostring(char *str) = 0;
     virtual bool Bind(sqlite3_stmt* stmt, int idx) = 0;
 };
 
@@ -44,13 +45,13 @@ public:
     void AddValue(const std::string& value);
     void AddValue(std::string&& value);
 
-    auto BindAndInsert(struct Statement const *stmt) -> std::size_t;
+    auto BindAndInsert(PGconn *conn, struct Statement const *stmt) -> std::size_t;
 };
 
 struct Statement
 {
     std::size_t nb;
-    int    nParams;
+    int         nParams;
 };
 
 class COutput

@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <sstream>
 #include <algorithm>        /* std::count() counting number of params in a query */
+#include <cstdio>           /* snprintf for IBindableValue::tostring() */
 
 #include <libpq-fe.h>       /* PostgreSQL */
 
@@ -11,7 +12,7 @@
 #include "COutput.hpp"
 #include "sqlite3.h"
 
-
+#define MAX_PARAM_LENGTH 100
 
 class CBindableDoubleValue : public IBindableValue
 {
@@ -23,6 +24,10 @@ public:
         : mValue(val)
     {}
 
+    void tostring(char *str)
+    {
+        snprintf(str, MAX_PARAM_LENGTH, "%f", mValue);
+    }
     bool Bind(sqlite3_stmt* const stmt, int idx) final
     {
         return sqlite3_bind_double(stmt, idx, mValue) == SQLITE_OK;
@@ -39,6 +44,10 @@ public:
         : mValue(val)
     {}
 
+    void tostring(char *str)
+    {
+        snprintf(str, MAX_PARAM_LENGTH, "%d", mValue);
+    }
     bool Bind(sqlite3_stmt* const stmt, int idx) final
     {
         return sqlite3_bind_int(stmt, idx, mValue) == SQLITE_OK;
@@ -54,14 +63,15 @@ public:
     CBindableInt64Value(std::uint64_t val)
         : mValue(val)
     {}
+
+    void tostring(char *str)
+    {
+        snprintf(str, MAX_PARAM_LENGTH, "%llu", mValue);
+    }
     //bool Bind(char **paramValues, int *paramLengths, size_t idx)
     bool Bind(sqlite3_stmt* const stmt, int idx) final
     {
-        std::string param = std::to_string(mValue);
-        //paramValues[idx] = new char[param.size() + 1];
-        //param.copy(paramValues[idx], param.size() + 1);
-        //paramLengths[idx] = param.size();
-        return (true);  // why??
+        return sqlite3_bind_int64(stmt, idx, mValue) == SQLITE_OK;
     }
 };
 
@@ -79,6 +89,10 @@ public:
         : mValue(std::move(val))
     {}
 
+    void tostring(char *str)
+    {
+        snprintf(str, MAX_PARAM_LENGTH, "%s", mValue.c_str());
+    }
     bool Bind(sqlite3_stmt* const stmt, int idx) final
     {
         if(mValue.empty())
@@ -125,7 +139,7 @@ void CInsertStatements::AddValue(std::string&& value)
     mValues.emplace_back(new CBindableStringValue(std::move(value)));
 }
 
-std::size_t CInsertStatements::BindAndInsert(struct Statement const *stmt)
+std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement const *stmt)
 {
     if(mValues.empty())
         return 0;
@@ -138,32 +152,36 @@ std::size_t CInsertStatements::BindAndInsert(struct Statement const *stmt)
 
     auto curValsIt = mValues.begin();
     std::size_t numInserted = 0;
+
+    // parameters for PQexecPrepared
     std::string stmtName = std::to_string(stmt->nb);//std::to_string(n);  // where to find n ??
+    int nParams = stmt->nParams;
+    char *paramValuesArray = (char *) malloc(nParams * MAX_PARAM_LENGTH * sizeof(char));
+    char **paramValues = (char **) malloc(nParams * sizeof(char *));
+    int *paramLengths = NULL;   // ignored for text-format parameters
+    int *paramFormats = NULL;   // NULL means all params are strings, which is maybe not optimal but ok
+    int resultFormat = 0;       // text; change to 1 for binary
+
+    for (std::size_t numBinded = 0; numBinded<numToBindPerRow; ++numBinded)
+        paramValues[numBinded] = &(paramValuesArray[numBinded * MAX_PARAM_LENGTH]);
     while(curValsIt != mValues.end())
     {
-        int nParams = stmt->nParams;
-        char **paramValues = NULL;  // get them somewhere from BindableValue??
-        int *paramLengths = NULL;   //??
-        int *paramFormats = NULL;   // NULL means all params are strings, which is maybe not optimal but ok
-        int resultFormat = 0;       // text; change to 1 for binary
-        for(std::size_t numBinded=1; numBinded<=numToBindPerRow; ++numBinded)
+        for(std::size_t numBinded=0; numBinded<numToBindPerRow; ++numBinded)
         {
+            (*curValsIt)->tostring(paramValues[numBinded]);
             //(*curValsIt)->Bind(paramValues, paramLengths);
+            //(*curValsIt)->Bind(stmt, numBinded);
             ++curValsIt;
         }
         //sqlite3_step(stmt);
         //sqlite3_clear_bindings(stmt);
         //sqlite3_reset(stmt);
-        /*PQexecPrepared(PGconn *conn,
-                         const char *stmtName,
-                         int nParams,
-                         const char * const *paramValues,
-                         const int *paramLengths,
-                         const int *paramFormats,
-                         int resultFormat);*/
+        PQexecPrepared(conn, stmtName.c_str(), nParams, paramValues, paramLengths, paramFormats, resultFormat);
         numInserted += 1;
     }
 
+    free(paramValues);
+    free(paramValuesArray);
     mValues.clear();
     return numInserted;
 }
@@ -372,7 +390,7 @@ void COutput::ConsumerThread()
         const std::size_t sqlStmtIdx = mStatementsBuffer[mConsumerIdx]->GetPreparedStatementIdx();
         //sqlite3_stmt* sqlStmt = mPreparedStatements[sqlStmtIdx];
         struct Statement stmt = mPreparedStatements[sqlStmtIdx];    // get name and number of arguments
-        numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(&stmt);
+        numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(postGreConnection, &stmt);
 
 
     }
