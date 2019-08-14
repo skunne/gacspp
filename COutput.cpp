@@ -207,31 +207,7 @@ COutput::~COutput()
     Shutdown();
 }
 
-/* sql initialise connection to db */
-/*
-bool COutput::Initialise(const std::experimental::filesystem::path& dbFilePath, bool keepInMemory)
-{
-    assert(mDB == nullptr);
-
-    if(sqlite3_config(SQLITE_CONFIG_LOG, COutput::LogCallback, nullptr) != SQLITE_OK)
-        return false;
-
-    if(keepInMemory)
-    {
-        mDBFilePath = dbFilePath;
-        sqlite3_open_v2(":memory:", &mDB, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
-    }
-    else
-        sqlite3_open_v2(dbFilePath.c_str(), &mDB, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
-
-    if(mDB == nullptr)
-        return false;
-
-    return true;
-}
-*/
-
-/* postgre initialise connection to db */
+/* initialise connection to postgres db */
 bool COutput::Initialise(void)
 {
     this->postGreConnection = PQconnectdb("user=admin host=dbod-skunne-testing.cern.ch port=6601 dbname=postgres");
@@ -250,44 +226,7 @@ bool COutput::StartConsumer()
     return true;
 }
 
-/* SQLite3 Shutdown connection */
-/*
-void COutput::Shutdown()
-{
-    mIsConsumerRunning = false;
-    if(mConsumerThread.joinable())
-        mConsumerThread.join();
-
-    while(!mPreparedStatements.empty())
-    {
-        sqlite3_finalize(mPreparedStatements.back());
-        mPreparedStatements.pop_back();
-    }
-
-    if(mDB != nullptr)
-    {
-        if (!mDBFilePath.empty())
-        {
-            sqlite3* diskDB;
-            int ok = sqlite3_open(mDBFilePath.c_str(), &diskDB);
-            if (ok == SQLITE_OK)
-            {
-                sqlite3_backup* backup = sqlite3_backup_init(diskDB, "main", mDB, "main");
-                if (backup)
-                {
-                    sqlite3_backup_step(backup, -1);
-                    sqlite3_backup_finish(backup);
-                }
-                sqlite3_close(diskDB);
-            }
-        }
-        sqlite3_close(mDB);
-        mDB = nullptr;
-    }
-}
-*/
-
-/* postgre Shutdown connection */
+/* Shutdown postgres connection */
 void COutput::Shutdown(void)
 {
     PQfinish(postGreConnection);

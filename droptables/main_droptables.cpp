@@ -14,7 +14,7 @@ bool printStatus(PGresult *result)
 	bool fatal_error = (status == PGRES_FATAL_ERROR);
 	bool everything_ok = !(empty_query || bad_response || fatal_error);
 
-	std::cout << "Status: " << PQresStatus(status) << std::endl;
+	std::cout << PQresStatus(status) << std::endl;
 	if (!everything_ok)
 		std::cout << PQresultErrorMessage(result);
 
@@ -33,4 +33,6 @@ int main(void)
     	printStatus(result);
 	}
 	PQfinish(conn);
+
+	return (0);
 }
