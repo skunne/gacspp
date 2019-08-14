@@ -150,34 +150,44 @@ std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement cons
     assert(numToBindPerRow > 0);
     assert((mValues.size() % numToBindPerRow) == 0);
 
-    auto curValsIt = mValues.begin();
+    // return value: counting the total number of elements inserted in the table
+    // == numToBindPerRow * nbRows
     std::size_t numInserted = 0;
 
     // parameters for PQexecPrepared
     std::string stmtName = std::to_string(stmt->nb);//std::to_string(n);  // where to find n ??
     int nParams = stmt->nParams;
-    char *paramValuesArray = (char *) malloc(nParams * MAX_PARAM_LENGTH * sizeof(char));
-    char **paramValues = (char **) malloc(nParams * sizeof(char *));
+    char *paramValuesArray = (char *) malloc(nParams * MAX_PARAM_LENGTH * sizeof(char));  //strings representing params
+    char **paramValues = (char **) malloc(nParams * sizeof(char *));  //pointers to paramValuesArray
     int *paramLengths = NULL;   // ignored for text-format parameters
     int *paramFormats = NULL;   // NULL means all params are strings, which is maybe not optimal but ok
     int resultFormat = 0;       // text; change to 1 for binary
 
+    // make paramValues point to paramValuesArray
     for (std::size_t numBinded = 0; numBinded<numToBindPerRow; ++numBinded)
         paramValues[numBinded] = &(paramValuesArray[numBinded * MAX_PARAM_LENGTH]);
+
+    // iterate over all queries in mValues
+    auto curValsIt = mValues.begin();
     while(curValsIt != mValues.end())
     {
+        // retrieve parameters and store them in paramValuesArray
         for(std::size_t numBinded=0; numBinded<numToBindPerRow; ++numBinded)
         {
             (*curValsIt)->tostring(paramValues[numBinded]);
             ++curValsIt;
         }
+
+        // execute statement with parameters
         PQexecPrepared(conn, stmtName.c_str(), nParams, paramValues, paramLengths, paramFormats, resultFormat);
+
         numInserted += 1;
     }
 
     free(paramValues);
     free(paramValuesArray);
     mValues.clear();
+    
     return numInserted;
 }
 
