@@ -12,7 +12,7 @@
 
 #include "constants.h"
 #include "COutput.hpp"      /* COutput, struct Statement, CInsertStatements, IBindableValue */
-#include "sqlite3.h"
+//#include "sqlite3.h"
 
 #define MAX_PARAM_LENGTH 100
 
@@ -30,10 +30,11 @@ public:
     {
         snprintf(str, MAX_PARAM_LENGTH, "%f", mValue);
     }
-    bool Bind(sqlite3_stmt* const stmt, int idx) final
+    /*bool Bind(sqlite3_stmt* const stmt, int idx) final
     {
-        return sqlite3_bind_double(stmt, idx, mValue) == SQLITE_OK;
-    }
+        //return sqlite3_bind_double(stmt, idx, mValue) == SQLITE_OK;
+        return false;
+    }*/
 };
 
 class CBindableIntValue : public IBindableValue
@@ -50,10 +51,11 @@ public:
     {
         snprintf(str, MAX_PARAM_LENGTH, "%d", mValue);
     }
-    bool Bind(sqlite3_stmt* const stmt, int idx) final
+    /*bool Bind(sqlite3_stmt* const stmt, int idx) final
     {
-        return sqlite3_bind_int(stmt, idx, mValue) == SQLITE_OK;
-    }
+        //return sqlite3_bind_int(stmt, idx, mValue) == SQLITE_OK;
+        return false;
+    }*/
 };
 
 class CBindableInt64Value : public IBindableValue
@@ -71,10 +73,11 @@ public:
         snprintf(str, MAX_PARAM_LENGTH, "%llu", mValue);
     }
     //bool Bind(char **paramValues, int *paramLengths, size_t idx)
-    bool Bind(sqlite3_stmt* const stmt, int idx) final
+    /*bool Bind(sqlite3_stmt* const stmt, int idx) final
     {
-        return sqlite3_bind_int64(stmt, idx, mValue) == SQLITE_OK;
-    }
+        //return sqlite3_bind_int64(stmt, idx, mValue) == SQLITE_OK;
+        return false;
+    }*/
 };
 
 class CBindableStringValue : public IBindableValue
@@ -95,13 +98,14 @@ public:
     {
         snprintf(str, MAX_PARAM_LENGTH, "%s", mValue.c_str());
     }
-    bool Bind(sqlite3_stmt* const stmt, int idx) final
+    /*bool Bind(sqlite3_stmt* const stmt, int idx) final
     {
-        if(mValue.empty())
-            return sqlite3_bind_null(stmt, idx) == SQLITE_OK;
-        else
-            return sqlite3_bind_text(stmt, idx, mValue.c_str(), mValue.size(), SQLITE_TRANSIENT) == SQLITE_OK;
-    }
+        //if(mValue.empty())
+        //    return sqlite3_bind_null(stmt, idx) == SQLITE_OK;
+        //else
+        //    return sqlite3_bind_text(stmt, idx, mValue.c_str(), mValue.size(), SQLITE_TRANSIENT) == SQLITE_OK;
+        return false;
+    }*/
 };
 
 CInsertStatements::CInsertStatements(std::size_t preparedStatementIdx, std::size_t numReserve)
@@ -236,7 +240,9 @@ COutput::~COutput()
 bool COutput::Initialise(void)
 {
     this->postGreConnection = PQconnectdb("user=admin host=dbod-skunne-testing.cern.ch port=6601 dbname=postgres");
-    return (this->postGreConnection != NULL);  /* Although the doc doesn't say anything about failure */
+    const std::string str = "SET AUTOCOMMIT TO OFF;";
+    return (this->postGreConnection != NULL && PQexec(postGreConnection, str.c_str()) != NULL);
+    //return (this->postGreConnection != NULL);  /* Although the doc doesn't say anything about failure */
     //return (true);
 }
 
@@ -358,7 +364,7 @@ void COutput::ConsumerThread()
         {
             if(numInsertedCurTransaction > 25000)
             {
-                PQexec(postGreConnection, "END TRANSACTION; BEGIN TRANSACTION");
+                PQexec(postGreConnection, "COMMIT TRANSACTION; BEGIN TRANSACTION");
                 numInsertedCurTransaction = 0;
             }
             // ConsumerThread() takes an CInsertStatements object from the queue
@@ -383,13 +389,14 @@ void COutput::ConsumerThread()
         // try to use time while buf is empty by commiting the transactionn
         if(numInsertedCurTransaction > 1000)
         {
-            sqlite3_exec(mDB, "END TRANSACTION; BEGIN TRANSACTION", nullptr, nullptr, nullptr);
+            PQexec(postGreConnection, "COMMIT TRANSACTION; BEGIN TRANSACTION");
+
             numInsertedCurTransaction = 0;
         }
         else
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    PQexec(postGreConnection, "END TRANSACTION");
+    PQexec(postGreConnection, "COMMIT TRANSACTION");
 
     // 1 ConsumerThread() takes an CInsertStatements object from the queue
     // 2 CInsertStatement::BindAndInsert() is called by the consumer thread

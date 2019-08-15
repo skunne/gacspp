@@ -11,15 +11,15 @@
 
 #define OUTPUT_BUF_SIZE 8192
 
-struct sqlite3;
-struct sqlite3_stmt;
+//struct sqlite3;
+//struct sqlite3_stmt;
 
 
 class IBindableValue
 {
 public:
     virtual void tostring(char *str) = 0;
-    virtual bool Bind(sqlite3_stmt* stmt, int idx) = 0;
+    //virtual bool Bind(sqlite3_stmt* stmt, int idx) = 0;
 };
 
 
@@ -66,12 +66,12 @@ private:
     std::atomic_size_t mProducerIdx = 0;
     std::unique_ptr<CInsertStatements> mStatementsBuffer[OUTPUT_BUF_SIZE];
 
-    sqlite3* mDB = nullptr;
+    //sqlite3* mDB = nullptr;
     //std::vector<sqlite3_stmt*> mPreparedStatements;   // not used by postgres
     std::vector<struct Statement> mPreparedStatements;
     std::size_t nbPreparedStatements = 0;
 
-    std::experimental::filesystem::path mDBFilePath;
+    //std::experimental::filesystem::path mDBFilePath;
 
     PGconn *postGreConnection;
 
