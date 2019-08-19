@@ -6,7 +6,7 @@
 #include <algorithm>        /* std::count() counting number of params in a query */
 #include <cstdio>           /* snprintf for IBindableValue::tostring() */
 
-//#include <iostream>         /* DEBUG */
+#include <iostream>         /* DEBUG */
 
 #include <libpq-fe.h>       /* PostgreSQL */
 
@@ -177,7 +177,13 @@ std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement cons
     std::string stmtName = std::to_string(stmt->id);//std::to_string(n);  // where to find n ??
     int nParams = stmt->nParams;
     char *paramValuesArray = (char *) malloc(nParams * MAX_PARAM_LENGTH * sizeof(char));  //strings representing params
-    char **paramValues = (char **) malloc(nParams * sizeof(char *));  //pointers to paramValuesArray
+    char **paramValues = (char **) malloc(nParams * sizeof(char *));  //pointers to paramValuesArray for PQexecPrepared()
+    if (paramValuesArray == NULL || paramValues == NULL)
+    {
+        std::cout << "malloc() failure for paramValues or paramValuesArray" << std::endl;
+        std::cout << "    paramValuesArray [" << paramValuesArray << ']' << std::endl;
+        std::cout << "    paramValues      [" << paramValues << ']' << std::endl;
+    }
     int *paramLengths = NULL;   // ignored for text-format parameters
     int *paramFormats = NULL;   // NULL means all params are strings, which is maybe not optimal but ok
     int resultFormat = 0;       // text; change to 1 for binary
@@ -414,6 +420,7 @@ void COutput::ConsumerThread()
         //}
         //else
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::cout << "The queue is empty!!" << std::endl;
     }
     //PQexec(postGreConnection, "COMMIT TRANSACTION");
 

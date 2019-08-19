@@ -26,10 +26,12 @@ void CSimpleSim::SetupDefaults()
     ok = output.CreateTable("Sites", "id BIGINT PRIMARY KEY, name varchar(64), locationName varchar(64)");
     assert(ok);
 
-    ok = output.CreateTable("StorageElements", "id BIGINT PRIMARY KEY, siteId BIGINT, name varchar(64), FOREIGN KEY(siteId) REFERENCES Sites(id)");
+    //ok = output.CreateTable("StorageElements", "id BIGINT PRIMARY KEY, siteId BIGINT, name varchar(64), FOREIGN KEY(siteId) REFERENCES Sites(id)");
+    ok = output.CreateTable("StorageElements", "id BIGINT PRIMARY KEY, siteId BIGINT, name varchar(64)");
     assert(ok);
 
-    ok = output.CreateTable("LinkSelectors", "id BIGINT PRIMARY KEY, srcSiteId BIGINT, dstSiteId BIGINT, FOREIGN KEY(srcSiteId) REFERENCES Sites(id), FOREIGN KEY(dstSiteId) REFERENCES Sites(id)");
+    //ok = output.CreateTable("LinkSelectors", "id BIGINT PRIMARY KEY, srcSiteId BIGINT, dstSiteId BIGINT, FOREIGN KEY(srcSiteId) REFERENCES Sites(id), FOREIGN KEY(dstSiteId) REFERENCES Sites(id)");
+    ok = output.CreateTable("LinkSelectors", "id BIGINT PRIMARY KEY, srcSiteId BIGINT, dstSiteId BIGINT");
     assert(ok);
 
     ok = output.CreateTable("Files", "id BIGINT PRIMARY KEY, createdAt BIGINT, lifetime BIGINT, filesize INTEGER");
@@ -44,9 +46,10 @@ void CSimpleSim::SetupDefaults()
             << "dstStorageElementId BIGINT,"
             << "startTick BIGINT,"
             << "endTick BIGINT,"
-            << "FOREIGN KEY(fileId) REFERENCES Files(id),"
-            << "FOREIGN KEY(srcStorageElementId) REFERENCES StorageElements(id),"
-            << "FOREIGN KEY(dstStorageElementId) REFERENCES StorageElements(id)";
+    //        << "FOREIGN KEY(fileId) REFERENCES Files(id),"
+    //        << "FOREIGN KEY(srcStorageElementId) REFERENCES StorageElements(id),"
+    //        << "FOREIGN KEY(dstStorageElementId) REFERENCES StorageElements(id)"
+            ;
     ok = output.CreateTable("Transfers", columns.str());
     assert(ok);
 
