@@ -239,9 +239,26 @@ COutput::~COutput()
 /* initialise connection to postgres db */
 bool COutput::Initialise(void)
 {
+    bool connectionOK;
+    // connect to database
     this->postGreConnection = PQconnectdb("user=admin host=dbod-skunne-testing.cern.ch port=6601 dbname=postgres");
-    const std::string str = "SET AUTOCOMMIT TO OFF;";
-    return (this->postGreConnection != NULL && PQexec(postGreConnection, str.c_str()) != NULL);
+
+    // change settings to populate faster
+    const std::string autocommit_off = "SET AUTOCOMMIT TO OFF;";
+    //const std::string "SET wal_level TO minimal; SET archive_mode TO off; SET max_wal_senders TO zero";
+    
+    connectionOK = this->postGreConnection != NULL;
+    //return (this->postGreConnection != NULL && PQexec(postGreConnection, autocommit_off.c_str()) != NULL);
+    
+    PQexec(postGreConnection, autocommit_off.c_str());
+
+    PQexec(postGreConnection, "BEGIN TRANSACTION");
+
+    return(connectionOK);
+    //disable autocommit
+    //increase maintenance_work_mem
+    //increase checkpoint_segments
+    //setting wal_level to minimal, archive_mode to off, and max_wal_senders to zero. But note that changing these settings requires a server restart.
     //return (this->postGreConnection != NULL);  /* Although the doc doesn't say anything about failure */
     //return (true);
 }
@@ -260,6 +277,7 @@ bool COutput::StartConsumer()
 /* Shutdown postgres connection */
 void COutput::Shutdown(void)
 {
+    PQexec(postGreConnection, "COMMIT TRANSACTION");
     PQfinish(postGreConnection);
 }
 
@@ -356,17 +374,17 @@ void COutput::QueueInserts(std::unique_ptr<CInsertStatements>&& statements)
 
 void COutput::ConsumerThread()
 {
-    PQexec(postGreConnection, "BEGIN TRANSACTION");
-    std::size_t numInsertedCurTransaction = 0;
+    //PQexec(postGreConnection, "BEGIN TRANSACTION");
+    //std::size_t numInsertedCurTransaction = 0;    // BEGIN/COMMIT optimisation
     while (mIsConsumerRunning || mConsumerIdx != mProducerIdx)
     {
         while (mConsumerIdx != mProducerIdx)
         {
-            if(numInsertedCurTransaction > 25000)
-            {
-                PQexec(postGreConnection, "COMMIT TRANSACTION; BEGIN TRANSACTION");
-                numInsertedCurTransaction = 0;
-            }
+            //if(numInsertedCurTransaction > 25000)
+            //{
+            //    PQexec(postGreConnection, "COMMIT TRANSACTION; BEGIN TRANSACTION");
+            //    numInsertedCurTransaction = 0;
+            //}
             // ConsumerThread() takes an CInsertStatements object from the queue
             const std::size_t sqlStmtIdx = mStatementsBuffer[mConsumerIdx]->GetPreparedStatementIdx();
             struct Statement stmt = mPreparedStatements[sqlStmtIdx];    // get name and number of arguments
@@ -379,7 +397,8 @@ void COutput::ConsumerThread()
             std::cout << "number of queries:   " << (mProducerIdx - mConsumerIdx) % OUTPUT_BUF_SIZE << std::endl;*/
 
             // Bind parameters and execute query
-            numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(postGreConnection, &stmt);
+            //numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(postGreConnection, &stmt);
+            mStatementsBuffer[mConsumerIdx]->BindAndInsert(postGreConnection, &stmt);
 
             // delete from queue
             mStatementsBuffer[mConsumerIdx] = nullptr;
@@ -387,16 +406,16 @@ void COutput::ConsumerThread()
         }
 
         // try to use time while buf is empty by commiting the transactionn
-        if(numInsertedCurTransaction > 1000)
-        {
-            PQexec(postGreConnection, "COMMIT TRANSACTION; BEGIN TRANSACTION");
+        //if(numInsertedCurTransaction > 1000)
+        //{
+        //    PQexec(postGreConnection, "COMMIT TRANSACTION; BEGIN TRANSACTION");
 
-            numInsertedCurTransaction = 0;
-        }
-        else
+        //    numInsertedCurTransaction = 0;
+        //}
+        //else
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    PQexec(postGreConnection, "COMMIT TRANSACTION");
+    //PQexec(postGreConnection, "COMMIT TRANSACTION");
 
     // 1 ConsumerThread() takes an CInsertStatements object from the queue
     // 2 CInsertStatement::BindAndInsert() is called by the consumer thread
