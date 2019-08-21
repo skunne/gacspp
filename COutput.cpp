@@ -247,7 +247,8 @@ bool COutput::Initialise(void)
 {
     bool connectionOK;
     // connect to database
-    this->postGreConnection = PQconnectdb("user=admin host=dbod-skunne-testing.cern.ch port=6601 dbname=postgres");
+    //this->postGreConnection = PQconnectdb("user=admin host=dbod-skunne-testing.cern.ch port=6601 dbname=postgres");
+    this->postGreConnection = PQconnectdb("user=postgres host=localhost port=5432 dbname=postgres");
 
     // change settings to populate faster
     const std::string autocommit_off = "SET AUTOCOMMIT TO OFF;";
