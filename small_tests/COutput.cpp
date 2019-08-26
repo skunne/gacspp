@@ -5,7 +5,9 @@
 
 bool COutput::Initialise(void)
 {
-    this->postGreConnection = PQconnectdb("user=admin host=dbod-skunne-testing.cern.ch port=6601 dbname=postgres");
+    //this->postGreConnection = PQconnectdb("user=admin host=dbod-skunne-testing.cern.ch port=6601 dbname=postgres");
+    this->postGreConnection = PQconnectdb("user=postgres host=localhost port=5432 dbname=postgres");
+
     return (this->postGreConnection != NULL);  /* Although the doc doesn't say anything about failure */
     //return (true);
 }
