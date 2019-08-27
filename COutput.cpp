@@ -254,7 +254,7 @@ bool COutput::Initialise(void)
     const std::string autocommit_off = "SET AUTOCOMMIT TO OFF;";
     //const std::string "SET wal_level TO minimal; SET archive_mode TO off; SET max_wal_senders TO zero";
     
-    connectionOK = this->postGreConnection != NULL;
+    connectionOK = (PQstatus(this->postGreConnection) != CONNECTION_BAD);
     //return (this->postGreConnection != NULL && PQexec(postGreConnection, autocommit_off.c_str()) != NULL);
     
     PQexec(postGreConnection, autocommit_off.c_str());

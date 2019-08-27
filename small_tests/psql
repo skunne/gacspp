@@ -1,1 +1,1 @@
-psql -h dbod-skunne-testing.cern.ch -p 6601 -U admin
+psql -h localhost -p 5432 -U postgres
