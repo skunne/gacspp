@@ -1,0 +1,81 @@
+./gacspp.out 
+DB in memory
+Output file: "/Users/stephan/cern_rucio/gacspp/output/19240_152954-output.db"
+MaxTick=2592000
+Adding region asia in Asia
+Adding bucket asia_bucket
+Adding region asia-northeast1 in Tokyo
+Adding bucket tokyo_bucket
+Adding region asia-east1 in Taiwan
+Adding bucket taiwan_bucket
+Adding region asia-southeast1 in Singapore
+Adding bucket singapore_bucket
+Adding region asia-south1 in Mumbai
+Adding bucket mumbai_bucket
+Adding region australia-southeast1 in Sydney
+Adding bucket sydney_bucket
+Adding region europe in Europe
+Adding bucket europe_bucket
+Adding region europe-west1 in Belgium
+Adding bucket belgium_bucket
+Adding region europe-west2 in London
+Adding bucket london_bucket
+Adding region europe-west3 in Frankfurt
+Adding bucket frankfurt_bucket
+Adding region europe-west4 in Netherlands
+Adding bucket netherlands_bucket
+Adding region southamerica-east1 in Sao Paulo
+Adding bucket sao_papulo_bucket
+Adding region us in US
+Adding bucket us_bucket
+Adding region us-central1 in Iowa
+Adding bucket iowa_bucket
+Adding region us-west1 in Oregon
+Adding bucket oregon_bucket
+Adding region us-east1 in South Carolina
+Adding bucket south_carolina_bucket
+Adding region us-east4 in Northern Virginia
+Adding bucket northern_virginia_bucket
+Adding site ASGC in asia
+Adding StorageElement TAIWAN_DATADISK
+Adding site CERN in europe
+Adding StorageElement CERN_DATADISK
+Adding site BNL in us
+Adding StorageElement BNL_DATADISK
+The queue is empty!!
+[    86k]: Runtime: 67.10s; numFiles: 68.25k; activeTransfers: 265; CompletedTransfers: 301830; AvgTransferDuration: 67
+           Duration:  67.10s
+     X2CTransferGen:  16.75s (24.97%)
+             Reaper:   0.41s ( 0.61%)
+            DataGen:  28.93s (43.12%)
+  X2CTransferUpdate:  20.99s (31.29%)
+
+[   172k]: Runtime: 232.67s; numFiles: 136.57k; activeTransfers: 332; CompletedTransfers: 361379; AvgTransferDuration: 67
+           Duration: 165.57s
+     X2CTransferGen:  37.05s (22.38%)
+             Reaper:   1.29s ( 0.78%)
+            DataGen:  85.43s (51.60%)
+  X2CTransferUpdate:  41.77s (25.23%)
+
+[   259k]: Runtime: 426.96s; numFiles: 204.75k; activeTransfers: 372; CompletedTransfers: 409436; AvgTransferDuration: 67
+           Duration: 194.29s
+     X2CTransferGen:  45.41s (23.37%)
+             Reaper:   1.93s ( 0.99%)
+            DataGen:  90.66s (46.66%)
+  X2CTransferUpdate:  56.26s (28.96%)
+
+[   345k]: Runtime: 638.65s; numFiles: 272.41k; activeTransfers: 388; CompletedTransfers: 436733; AvgTransferDuration: 67
+           Duration: 211.70s
+     X2CTransferGen:  51.55s (24.35%)
+             Reaper:   2.48s ( 1.17%)
+            DataGen:  96.57s (45.62%)
+  X2CTransferUpdate:  61.08s (28.85%)
+
+[   432k]: Runtime: 945.03s; numFiles: 335.61k; activeTransfers: 395; CompletedTransfers: 454362; AvgTransferDuration: 67
+           Duration: 306.38s
+     X2CTransferGen:  75.85s (24.76%)
+             Reaper:   3.05s ( 1.00%)
+            DataGen: 136.96s (44.70%)
+  X2CTransferUpdate:  90.49s (29.54%)
+
+^C

@@ -259,7 +259,7 @@ bool COutput::Initialise(void)
     
     PQexec(postGreConnection, autocommit_off.c_str());
 
-    //PQexec(postGreConnection, "BEGIN TRANSACTION");
+    PQexec(postGreConnection, "BEGIN TRANSACTION");
 
     return(connectionOK);
     //disable autocommit
@@ -284,7 +284,7 @@ bool COutput::StartConsumer()
 /* Shutdown postgres connection */
 void COutput::Shutdown(void)
 {
-    //PQexec(postGreConnection, "COMMIT TRANSACTION");
+    PQexec(postGreConnection, "COMMIT TRANSACTION");
     PQfinish(postGreConnection);
 }
 
@@ -381,17 +381,17 @@ void COutput::QueueInserts(std::unique_ptr<CInsertStatements>&& statements)
 
 void COutput::ConsumerThread()
 {
-    PQexec(postGreConnection, "BEGIN TRANSACTION");
-    std::size_t numInsertedCurTransaction = 0;    // BEGIN/COMMIT optimisation
+    //PQexec(postGreConnection, "BEGIN TRANSACTION");
+    //std::size_t numInsertedCurTransaction = 0;    // BEGIN/COMMIT optimisation
     while (mIsConsumerRunning || mConsumerIdx != mProducerIdx)
     {
         while (mConsumerIdx != mProducerIdx)
         {
-            if(numInsertedCurTransaction > 25000)
-            {
-                PQexec(postGreConnection, "COMMIT TRANSACTION; BEGIN TRANSACTION");
-                numInsertedCurTransaction = 0;
-            }
+            //if(numInsertedCurTransaction > 25000)
+            //{
+            //    PQexec(postGreConnection, "COMMIT TRANSACTION; BEGIN TRANSACTION");
+            //    numInsertedCurTransaction = 0;
+            //}
             // ConsumerThread() takes an CInsertStatements object from the queue
             const std::size_t sqlStmtIdx = mStatementsBuffer[mConsumerIdx]->GetPreparedStatementIdx();
             struct Statement stmt = mPreparedStatements[sqlStmtIdx];    // get name and number of arguments
@@ -404,8 +404,8 @@ void COutput::ConsumerThread()
             std::cout << "number of queries:   " << (mProducerIdx - mConsumerIdx) % OUTPUT_BUF_SIZE << std::endl;*/
 
             // Bind parameters and execute query
-            numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(postGreConnection, &stmt);
-            //mStatementsBuffer[mConsumerIdx]->BindAndInsert(postGreConnection, &stmt);
+            //numInsertedCurTransaction += mStatementsBuffer[mConsumerIdx]->BindAndInsert(postGreConnection, &stmt);
+            mStatementsBuffer[mConsumerIdx]->BindAndInsert(postGreConnection, &stmt);
 
             // delete from queue
             mStatementsBuffer[mConsumerIdx] = nullptr;
@@ -423,7 +423,7 @@ void COutput::ConsumerThread()
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         std::cout << "The queue is empty!!" << std::endl;
     }
-    PQexec(postGreConnection, "COMMIT TRANSACTION");
+    //PQexec(postGreConnection, "COMMIT TRANSACTION");
 
     // 1 ConsumerThread() takes an CInsertStatements object from the queue
     // 2 CInsertStatement::BindAndInsert() is called by the consumer thread
