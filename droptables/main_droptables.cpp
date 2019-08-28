@@ -24,7 +24,8 @@ bool printStatus(PGresult *result)
 int main(void)
 {
 	std::string tablenames[] = {"helloworld", "files", "linkselectors", "replicas", "sites", "storageelements", "transfers"};
-	PGconn *conn = PQconnectdb("user=admin host=dbod-skunne-testing.cern.ch port=6601 dbname=postgres");
+	//PGconn *conn = PQconnectdb("user=admin host=dbod-skunne-testing.cern.ch port=6601 dbname=postgres");
+	PGconn *conn = PQconnectdb("user=postgres host=localhost port=5432 dbname=postgres");
 	for (std::string name : tablenames)
 	{
     	const std::string str = DROPTABLE + name + CASCADE;
