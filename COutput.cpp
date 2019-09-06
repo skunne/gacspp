@@ -176,21 +176,24 @@ std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement cons
     // parameters for PQexecPrepared
     std::string stmtName = std::to_string(stmt->id);//std::to_string(n);  // where to find n ??
     int nParams = stmt->nParams;
-    char *paramValuesArray = (char *) malloc(nParams * MAX_PARAM_LENGTH * sizeof(char));  //strings representing params
-    char **paramValues = (char **) malloc(nParams * sizeof(char *));  //pointers to paramValuesArray for PQexecPrepared()
-    if (paramValuesArray == NULL || paramValues == NULL)
-    {
-        std::cout << "malloc() failure for paramValues or paramValuesArray" << std::endl;
-        std::cout << "    paramValuesArray [" << paramValuesArray << ']' << std::endl;
-        std::cout << "    paramValues      [" << paramValues << ']' << std::endl;
-    }
+    //char *paramValuesArray = (char *) malloc(nParams * MAX_PARAM_LENGTH * sizeof(char));  //strings representing params
+    //char **paramValues = (char **) malloc(nParams * sizeof(char *));  //pointers to paramValuesArray for PQexecPrepared()
+    //if (paramValuesArray == NULL || paramValues == NULL)
+    //{
+    //    std::cout << "malloc() failure for paramValues or paramValuesArray" << std::endl;
+    //    std::cout << "    paramValuesArray [" << paramValuesArray << ']' << std::endl;
+    //    std::cout << "    paramValues      [" << paramValues << ']' << std::endl;
+    //}
+    std::string paramCsv = "";
+    paramCsv.reserve(nParams * (MAX_PARAM_LENGTH+1) + 1);
+
     int *paramLengths = NULL;   // ignored for text-format parameters
     int *paramFormats = NULL;   // NULL means all params are strings, which is maybe not optimal but ok
     int resultFormat = 0;       // text; change to 1 for binary
 
     // make paramValues point to paramValuesArray
-    for (int numBinded = 0; numBinded<numToBindPerRow; ++numBinded)
-        paramValues[numBinded] = &(paramValuesArray[numBinded * MAX_PARAM_LENGTH]);
+    //for (int numBinded = 0; numBinded<numToBindPerRow; ++numBinded)
+    //    paramValues[numBinded] = &(paramValuesArray[numBinded * MAX_PARAM_LENGTH]);
 
     // iterate over all queries in mValues
     auto curValsIt = mValues.begin();
@@ -199,27 +202,39 @@ std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement cons
         // retrieve parameters and store them in paramValuesArray
         for(int numBinded=0; numBinded<numToBindPerRow; ++numBinded)
         {
-            (*curValsIt)->tostring(paramValues[numBinded]);
+            //(*curValsIt)->tostring(paramValues[numBinded]);
+            char paramValue[MAX_PARAM_LENGTH + 1];
+            (*curValsIt)->tostring(paramValue);
+            paramCsv.append(paramValue);
+            paramCsv.push_back(',');
             ++curValsIt;
         }
+        paramCsv.push_back('\n');
 
-        // execute statement with parameters
-        PGresult *res = PQexecPrepared(conn, stmtName.c_str(), nParams, paramValues, paramLengths, paramFormats, resultFormat);
+        // execute COPY statement
+        //PGresult *res = PQexecPrepared(conn, stmtName.c_str(), nParams, paramValues, paramLengths, paramFormats, resultFormat);
+        PGresult *res_copy = PQexecPrepared(conn, stmtName.c_str(), 0, NULL, paramLengths, paramFormats, resultFormat);
+        PGresult *res_getresult = PQgetResult(conn);
+        // HERE CHECK RESULT OK
+        int res_putcopydata = PQputCopyData(conn, paramCsv.c_str(), paramCsv.length());
+        int res_putcopyend = PQputCopyEnd(conn, NULL);
+
+        // HERE CLEAR THE two PGRESULT AND CHECK EVERYTHING OK
 
         // checking everything went ok
-        ExecStatusType resultStatus = PQresultStatus(res);
-        if (resultStatus == PGRES_BAD_RESPONSE || resultStatus == PGRES_FATAL_ERROR)
-        {
-            std::cout << "Error while executing command [" << stmtName << "]!!!" << std::endl;
-        }
-        
-        PQclear(res);
+        //ExecStatusType resultStatus = PQresultStatus(res);
+        //if (resultStatus == PGRES_BAD_RESPONSE || resultStatus == PGRES_FATAL_ERROR)
+        //{
+        //    std::cout << "Error while executing command [" << stmtName << "]!!!" << std::endl;
+        //}
+
+        //PQclear(res);
 
         numInserted += 1;
     }
 
-    free(paramValues);
-    free(paramValuesArray);
+    //free(paramValues);
+    //free(paramValuesArray);
     mValues.clear();
 
     return numInserted;

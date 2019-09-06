@@ -1,0 +1,3 @@
+ps -fu 502
+identify ppid other than 1 (third column)
+kill -s SIGINT [ppid]
