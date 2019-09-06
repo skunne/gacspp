@@ -313,18 +313,20 @@ void COutput::replaceQuestionMarks(std::string& statementString)
 }
 
 // prepare a query with placeholders
-auto COutput::AddPreparedSQLStatement(const std::string& queryString) -> std::size_t
+auto COutput::AddPreparedSQLStatement(const std::string& queryString, std::size_t numWildcards) -> std::size_t
 {
     // make a local copy of the string, that will be edited to replace '?' with "$n"
     std::string statementString(queryString);
 
     // arguments for PQprepare
     std::string stmtName = std::to_string(nbPreparedStatements);
-    int nParams = std::count(statementString.begin(), statementString.end(), '?');
+    int nParams = (int) numWildcards;
+    //int nParams = std::count(statementString.begin(), statementString.end(), '?');
     const Oid *paramTypes = NULL;   // ???
 
     // replace "? ? ?" placeholders with "$1 $2 $3" in query string
-    replaceQuestionMarks(statementString);
+    // no longer needed because statements won't have placeholders at all
+    //replaceQuestionMarks(statementString);
 
     // prepare the statement with name stmtName
     PQprepare(postGreConnection, stmtName.c_str(), statementString.c_str(), nParams, paramTypes);

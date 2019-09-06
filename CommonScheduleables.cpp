@@ -21,7 +21,8 @@ CDataGenerator::CDataGenerator(IBaseSim* sim, const std::uint32_t tickFreq, cons
       mSim(sim),
       mTickFreq(tickFreq)
 {
-    mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Files VALUES(?, ?, ?, ?);");
+    //mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Files VALUES(?, ?, ?, ?);");
+    mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("COPY Files(id, createdAt, expiredAt, filesize) FROM STDIN with(FORMAT csv);", 4);
 }
 
 void CDataGenerator::OnUpdate(const TickType now)
@@ -190,7 +191,9 @@ CTransferManager::CTransferManager(const std::uint32_t tickFreq, const TickType 
       mTickFreq(tickFreq)
 {
     mActiveTransfers.reserve(1024*1024);
-    mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?);");
+
+    //mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?);");
+    mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("COPY Transfers(id, srcReplicaId, dstReplicaId, startTick, endTick) FROM STDIN with(FORMAT csv);", 5);
 }
 
 void CTransferManager::CreateTransfer(std::shared_ptr<SReplica> srcReplica, std::shared_ptr<SReplica> dstReplica, const TickType now)
@@ -282,7 +285,8 @@ CFixedTimeTransferManager::CFixedTimeTransferManager(const std::uint32_t tickFre
       mTickFreq(tickFreq)
 {
     mActiveTransfers.reserve(1024*1024);
-    mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?);");
+    //mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("INSERT INTO Transfers VALUES(?, ?, ?, ?, ?);");
+    mOutputQueryIdx = COutput::GetRef().AddPreparedSQLStatement("COPY Transfers(id, srcReplicaId, dstReplicaId, startTick, endTick) FROM STDIN with(FORMAT csv);", 5);
 }
 
 void CFixedTimeTransferManager::CreateTransfer(std::shared_ptr<SReplica> srcReplica, std::shared_ptr<SReplica> dstReplica, const TickType now, const TickType duration)

@@ -53,7 +53,8 @@ void CSimpleSim::SetupDefaults()
     ok = output.CreateTable("Transfers", columns.str());
     assert(ok);
 
-    CStorageElement::mOutputQueryIdx = output.AddPreparedSQLStatement("INSERT INTO Replicas VALUES(?, ?);");
+    //CStorageElement::mOutputQueryIdx = output.AddPreparedSQLStatement("INSERT INTO Replicas VALUES(?, ?);");
+    CStorageElement::mOutputQueryIdx = output.AddPreparedSQLStatement("COPY Replicas(fileId, storageElementId) FROM STDIN with(FORMAT csv);", 2);
 
 
     ////////////////////////////

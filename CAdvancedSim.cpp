@@ -57,7 +57,8 @@ void CAdvancedSim::SetupDefaults()
     ok = output.CreateTable("Transfers", dbIn.str());
     assert(ok);
 
-    CStorageElement::mOutputQueryIdx = output.AddPreparedSQLStatement("INSERT INTO Replicas VALUES(?, ?, ?, ?, ?);");
+    //CStorageElement::mOutputQueryIdx = output.AddPreparedSQLStatement("INSERT INTO Replicas VALUES(?, ?, ?, ?, ?);");
+    CStorageElement::mOutputQueryIdx = output.AddPreparedSQLStatement("COPY Replicas(id, fileId, storageElementId, createdAt, expiredAt) FROM STDIN with(FORMAT csv);", 5);
 
 
     ////////////////////////////

@@ -91,7 +91,7 @@ public:
     void Shutdown();
 
     void replaceQuestionMarks(std::string& statementString);
-    auto AddPreparedSQLStatement(const std::string& queryString) -> std::size_t;
+    auto AddPreparedSQLStatement(const std::string& queryString, std::size_t numWildcards) -> std::size_t; 
     bool CreateTable(const std::string& tableName, const std::string& column);
     bool InsertRow(const std::string& tableName, const std::string& row);
 
