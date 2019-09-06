@@ -204,7 +204,16 @@ std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement cons
         }
 
         // execute statement with parameters
-        PQexecPrepared(conn, stmtName.c_str(), nParams, paramValues, paramLengths, paramFormats, resultFormat);
+        PGresult *res = PQexecPrepared(conn, stmtName.c_str(), nParams, paramValues, paramLengths, paramFormats, resultFormat);
+
+        // checking everything went ok
+        ExecStatusType resultStatus = PQresultStatus(res);
+        if (resultStatus == PGRES_BAD_RESPONSE || resultStatus == PGRES_FATAL_ERROR)
+        {
+            std::cout << "Error while executing command [" << stmtName << "]!!!" << std::endl;
+        }
+        
+        PQclear(res);
 
         numInserted += 1;
     }
@@ -329,7 +338,7 @@ auto COutput::AddPreparedSQLStatement(const std::string& queryString, std::size_
     //replaceQuestionMarks(statementString);
 
     // prepare the statement with name stmtName
-    PQprepare(postGreConnection, stmtName.c_str(), statementString.c_str(), nParams, paramTypes);
+    PGresult *res = PQprepare(postGreConnection, stmtName.c_str(), statementString.c_str(), nParams, paramTypes);
 
     /*
     ** DEBUG
@@ -341,6 +350,8 @@ auto COutput::AddPreparedSQLStatement(const std::string& queryString, std::size_
     struct Statement stmt = { .id = nbPreparedStatements, .nParams = nParams };
     mPreparedStatements.emplace_back(stmt);
     nbPreparedStatements += 1;
+
+    PQclear(res);
     return nbPreparedStatements - 1;
 }
 
@@ -349,7 +360,10 @@ bool COutput::CreateTable(const std::string& tableName, const std::string& colum
     if(mIsConsumerRunning)     /* I do not know what this does? */
         return false;
     const std::string str = "CREATE TABLE " + tableName + "(" + columns + ");";
-    return (PQexec(postGreConnection, str.c_str()) != NULL);
+    PGresult *res = PQexec(postGreConnection, str.c_str());
+    ExecStatusType resultStatus = PQresultStatus(res);
+    PQclear(res);
+    return (resultStatus != PGRES_BAD_RESPONSE && resultStatus != PGRES_FATAL_ERROR);
 }
 
 bool COutput::InsertRow(const std::string& tableName, const std::string& row)
@@ -359,6 +373,7 @@ bool COutput::InsertRow(const std::string& tableName, const std::string& row)
     const std::string str = "INSERT INTO " + tableName + " VALUES (" + row + ");";
     PGresult *result = PQexec(postGreConnection, str.c_str());
     ExecStatusType resultStatus = PQresultStatus(result);
+    PQclear(result);
     return (resultStatus != PGRES_BAD_RESPONSE && resultStatus != PGRES_FATAL_ERROR);
     /* this return shows errors but hides warnings */
 }
