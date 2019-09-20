@@ -184,6 +184,8 @@ std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement cons
     //    std::cout << "    paramValuesArray [" << paramValuesArray << ']' << std::endl;
     //    std::cout << "    paramValues      [" << paramValues << ']' << std::endl;
     //}
+
+    // reserve a string for all parameters as CSV 
     std::string paramCsv = "";
     paramCsv.reserve(nParams * (MAX_PARAM_LENGTH+1) + 1);
 
@@ -210,28 +212,43 @@ std::size_t CInsertStatements::BindAndInsert(PGconn *conn, struct Statement cons
             ++curValsIt;
         }
         paramCsv.push_back('\n');
+        numInserted += 1;
+    }
 
         // execute COPY statement
         //PGresult *res = PQexecPrepared(conn, stmtName.c_str(), nParams, paramValues, paramLengths, paramFormats, resultFormat);
         PGresult *res_copy = PQexecPrepared(conn, stmtName.c_str(), 0, NULL, paramLengths, paramFormats, resultFormat);
-        PGresult *res_getresult = PQgetResult(conn);
+        //int i = 0;
+        //PGresult *res_getresult = PQgetResult(conn);    // should that be here?
+        /*while (res_getresult != NULL)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            res_getresult = PQgetResult(conn);
+            i += 1;
+        }
+        std::cout << "passed the getResult() while loop, i=" << i << std::endl;
+*/
         int res_putcopydata = PQputCopyData(conn, paramCsv.c_str(), paramCsv.length());
         int res_putcopyend = PQputCopyEnd(conn, NULL);
 
+        PGresult *res_getresult = PQgetResult(conn);    // should that be here?
+
         // check everything ok
         ExecStatusType status_copy = PQresultStatus(res_copy);
-        ExecStatusType status_getresult = PQresultStatus(res_getresult);
-        if (res_putcopydata == -1 || res_putcopyend == -1 || status_copy == PGRES_BAD_RESPONSE || status_copy == PGRES_FATAL_ERROR || status_getresult == PGRES_BAD_RESPONSE || status_getresult == PGRES_FATAL_ERROR)
+        if (res_putcopydata == -1 || res_putcopyend == -1 || status_copy == PGRES_BAD_RESPONSE || status_copy == PGRES_FATAL_ERROR)
         {
             std::cout << "Error while executing command [" << stmtName << "]!!!" << std::endl;
+            std::cout << "   Details: res_putcopydata [" << res_putcopydata << "]" << std::endl
+                      << "            res_putcopyend  [" << res_putcopyend << "]" << std::endl;
+
+
         }
 
         // free all PGresult*
         PQclear(res_copy);
         PQclear(res_getresult);
 
-        numInserted += 1;
-    }
+        
 
     //free(paramValues);
     //free(paramValuesArray);
